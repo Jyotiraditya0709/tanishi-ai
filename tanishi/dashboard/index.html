@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Tanishi — Personal AI</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+<style>
+body { background: #0a0a0f; color: #e0e0e0; font-family: 'Segoe UI', system-ui, sans-serif; }
+.glow { box-shadow: 0 0 20px rgba(0, 200, 255, 0.1); }
+.msg-user { background: #1a1a2e; border-left: 3px solid #00c8ff; }
+.msg-tanishi { background: #0f1923; border-left: 3px solid #ff6b6b; }
+.tool-badge { background: #1a2a1a; color: #4ade80; font-size: 0.7rem; padding: 2px 8px; border-radius: 12px; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.status-online { background: #4ade80; box-shadow: 0 0 6px #4ade80; }
+.status-offline { background: #666; }
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #111; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+input:focus, textarea:focus { outline: none; box-shadow: 0 0 0 2px rgba(0, 200, 255, 0.3); }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+.thinking { animation: pulse 1.5s ease-in-out infinite; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+const API_BASE = window.location.origin;
+const WS_URL = `ws://${window.location.host}/ws`;
+
+function App() {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const [status, setStatus] = useState(null);
+  const [isThinking, setIsThinking] = useState(false);
+  const [activeTab, setActiveTab] = useState('chat');
+  const [notifications, setNotifications] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [memory, setMemory] = useState(null);
+  const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    fetchStatus();
+    fetchNotifications();
+    fetchTasks();
+    fetchMemory();
+    const interval = setInterval(fetchStatus, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  async function fetchStatus() {
+    try {
+      const res = await fetch(`${API_BASE}/status`);
+      const data = await res.json();
+      setStatus(data);
+    } catch (e) { console.error('Status fetch failed:', e); }
+  }
+
+  async function fetchNotifications() {
+    try {
+      const res = await fetch(`${API_BASE}/notifications`);
+      if (res.ok) setNotifications(await res.json());
+    } catch (e) {}
+  }
+
+  async function fetchTasks() {
+    try {
+      const res = await fetch(`${API_BASE}/tasks`);
+      if (res.ok) setTasks(await res.json());
+    } catch (e) {}
+  }
+
+  async function fetchMemory() {
+    try {
+      const res = await fetch(`${API_BASE}/memory`);
+      if (res.ok) setMemory(await res.json());
+    } catch (e) {}
+  }
+
+  async function sendMessage(e) {
+    e?.preventDefault();
+    if (!input.trim() || isThinking) return;
+
+    const userMsg = input.trim();
+    setInput('');
+    setMessages(prev => [...prev, { role: 'user', content: userMsg, time: new Date() }]);
+    setIsThinking(true);
+
+    try {
+      const res = await fetch(`${API_BASE}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userMsg }),
+      });
+      const data = await res.json();
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: data.response,
+        model: data.model_used,
+        tokens: `${data.tokens_in}→${data.tokens_out}`,
+        time: new Date(),
+      }]);
+      fetchMemory();
+    } catch (err) {
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: 'Connection error. Is the Tanishi server running?',
+        time: new Date(),
+      }]);
+    }
+    setIsThinking(false);
+    inputRef.current?.focus();
+  }
+
+  function StatusBar() {
+    const brain = status?.brain || {};
+    return (
+      <div className="flex items-center justify-between p-3 border-b border-gray-800">
+        <div className="flex items-center gap-3">
+          <span className="text-xl font-bold" style={{color: '#ff6b6b'}}>T</span>
+          <span className="font-semibold">Tanishi</span>
+          <span className="text-xs text-gray-500">v0.4.0</span>
+        </div>
+        <div className="flex items-center gap-4 text-xs text-gray-400">
+          <span><span className={`status-dot ${brain.claude === 'online' ? 'status-online' : 'status-offline'}`}></span> Claude</span>
+          <span><span className={`status-dot ${brain.ollama === 'online' ? 'status-online' : 'status-offline'}`}></span> Ollama</span>
+          <span>🔧 {brain.tools || 0} tools</span>
+          {notifications.filter(n => !n.read).length > 0 && (
+            <span className="bg-red-600 text-white px-2 py-0.5 rounded-full text-xs">
+              {notifications.filter(n => !n.read).length}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  function TabBar() {
+    const tabs = [
+      { id: 'chat', label: '💬 Chat' },
+      { id: 'memory', label: '🧠 Memory' },
+      { id: 'tasks', label: '⚡ Tasks' },
+      { id: 'notifications', label: '🔔 Alerts' },
+    ];
+    return (
+      <div className="flex border-b border-gray-800">
+        {tabs.map(tab => (
+          <button key={tab.id}
+            className={`flex-1 py-2 text-sm ${activeTab === tab.id ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-500'}`}
+            onClick={() => setActiveTab(tab.id)}>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  function ChatView() {
+    return (
+      <div className="flex flex-col" style={{height: 'calc(100vh - 120px)'}}>
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {messages.length === 0 && (
+            <div className="text-center text-gray-500 mt-20">
+              <p className="text-4xl mb-4">🧠</p>
+              <p className="text-lg font-semibold mb-2">Hey there, boss.</p>
+              <p className="text-sm">Type something. I dare you.</p>
+            </div>
+          )}
+          {messages.map((msg, i) => (
+            <div key={i} className={`p-3 rounded-lg ${msg.role === 'user' ? 'msg-user' : 'msg-tanishi'}`}>
+              <div className="flex justify-between items-start mb-1">
+                <span className="text-xs font-bold" style={{color: msg.role === 'user' ? '#00c8ff' : '#ff6b6b'}}>
+                  {msg.role === 'user' ? 'You' : 'Tanishi'}
+                </span>
+                <span className="text-xs text-gray-600">
+                  {msg.time?.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}
+                </span>
+              </div>
+              <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
+              {msg.model && (
+                <div className="mt-2 flex gap-2 items-center">
+                  <span className="tool-badge">{msg.tokens} tokens</span>
+                  <span className="text-xs text-gray-600">{msg.model}</span>
+                </div>
+              )}
+            </div>
+          ))}
+          {isThinking && (
+            <div className="msg-tanishi p-3 rounded-lg thinking">
+              <span className="text-xs font-bold" style={{color: '#ff6b6b'}}>Tanishi</span>
+              <p className="text-sm text-gray-400 mt-1">Thinking...</p>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+        <div className="p-3 border-t border-gray-800">
+          <form onSubmit={sendMessage} className="flex gap-2">
+            <input ref={inputRef}
+              type="text" value={input}
+              onChange={e => setInput(e.target.value)}
+              placeholder="Talk to Tanishi..."
+              className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-sm"
+              autoFocus disabled={isThinking}
+            />
+            <button type="submit" disabled={isThinking}
+              className="bg-cyan-600 hover:bg-cyan-500 disabled:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
+              Send
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  function MemoryView() {
+    if (!memory) return <div className="p-4 text-gray-500">Loading memory...</div>;
+    return (
+      <div className="p-4 space-y-4 overflow-y-auto" style={{height: 'calc(100vh - 120px)'}}>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-gray-900 rounded-lg p-3 glow">
+            <p className="text-xs text-gray-400">Core memories</p>
+            <p className="text-2xl font-bold text-cyan-400">{memory.stats?.core_memories || 0}</p>
+          </div>
+          <div className="bg-gray-900 rounded-lg p-3 glow">
+            <p className="text-xs text-gray-400">Total memories</p>
+            <p className="text-2xl font-bold text-cyan-400">{memory.stats?.total_memories || 0}</p>
+          </div>
+        </div>
+        {memory.core && Object.keys(memory.core).length > 0 && (
+          <div>
+            <h3 className="text-sm font-bold text-gray-300 mb-2">Core Memory (always active)</h3>
+            {Object.entries(memory.core).map(([k, v]) => (
+              <div key={k} className="bg-gray-900 rounded p-2 mb-1 text-sm">
+                <span className="text-cyan-400">{k}:</span> {v}
+              </div>
+            ))}
+          </div>
+        )}
+        {memory.recent && memory.recent.length > 0 && (
+          <div>
+            <h3 className="text-sm font-bold text-gray-300 mb-2">Recent memories</h3>
+            {memory.recent.map((m, i) => (
+              <div key={i} className="bg-gray-900 rounded p-2 mb-1 text-sm">
+                <span className="tool-badge">{m.category}</span> {m.content}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function TasksView() {
+    return (
+      <div className="p-4 space-y-3 overflow-y-auto" style={{height: 'calc(100vh - 120px)'}}>
+        <h3 className="text-sm font-bold text-gray-300">Background tasks</h3>
+        {tasks.length === 0 ? (
+          <p className="text-gray-500 text-sm">No tasks configured. Use /schedule in the CLI.</p>
+        ) : (
+          tasks.map(task => (
+            <div key={task.id} className="bg-gray-900 rounded-lg p-3 glow">
+              <div className="flex justify-between">
+                <span className="font-medium text-sm">{task.name}</span>
+                <span className={`text-xs ${task.enabled ? 'text-green-400' : 'text-gray-500'}`}>
+                  {task.enabled ? 'active' : 'paused'}
+                </span>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">{task.description}</p>
+              <p className="text-xs text-gray-600 mt-1">Every {task.interval_minutes}min • Runs: {task.run_count}</p>
+            </div>
+          ))
+        )}
+      </div>
+    );
+  }
+
+  function NotificationsView() {
+    return (
+      <div className="p-4 space-y-3 overflow-y-auto" style={{height: 'calc(100vh - 120px)'}}>
+        <div className="flex justify-between items-center">
+          <h3 className="text-sm font-bold text-gray-300">Notifications</h3>
+          <button onClick={() => { fetch(`${API_BASE}/notifications/read`, {method:'POST'}); fetchNotifications(); }}
+            className="text-xs text-cyan-400">Mark all read</button>
+        </div>
+        {notifications.length === 0 ? (
+          <p className="text-gray-500 text-sm">No notifications yet. Enable background tasks to get proactive alerts.</p>
+        ) : (
+          notifications.slice().reverse().map(n => (
+            <div key={n.id} className={`bg-gray-900 rounded-lg p-3 ${!n.read ? 'border-l-2 border-cyan-400' : ''}`}>
+              <p className="text-sm">{n.message}</p>
+              <p className="text-xs text-gray-600 mt-1">{n.source} • {new Date(n.timestamp).toLocaleString()}</p>
+            </div>
+          ))
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-lg mx-auto h-screen flex flex-col">
+      <StatusBar />
+      <TabBar />
+      {activeTab === 'chat' && <ChatView />}
+      {activeTab === 'memory' && <MemoryView />}
+      {activeTab === 'tasks' && <TasksView />}
+      {activeTab === 'notifications' && <NotificationsView />}
+    </div>
+  );
+}
+
+ReactDOM.render(<App />, document.getElementById('root'));
+</script>
+</body>
+</html>

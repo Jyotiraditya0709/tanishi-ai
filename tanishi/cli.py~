@@ -1,0 +1,817 @@
+"""
+Tanishi CLI v3 — Now she speaks.
+
+Upgraded with:
+- Tool execution display (shows when Tanishi uses tools)
+- Approval prompts for dangerous operations
+- Self-improvement commands
+- VOICE MODE: talk to Tanishi like Tony Stark
+"""
+
+import os
+import sys
+import uuid
+import asyncio
+import json
+from datetime import datetime
+from pathlib import Path
+
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.panel import Panel
+from rich.text import Text
+from rich.table import Table
+from rich import box
+
+from prompt_toolkit import PromptSession
+from prompt_toolkit.history import FileHistory
+from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+from prompt_toolkit.styles import Style as PTStyle
+
+from tanishi.core import get_config
+from tanishi.core.brain import TanishiBrain
+from tanishi.memory.manager import MemoryManager, MemoryEntry
+from tanishi.memory.trust import TrustManager, TrustLevel, Contact, Secret
+from tanishi.tools.registry import ToolRegistry
+from tanishi.tools.web_search import get_web_tools
+from tanishi.tools.filesystem import get_filesystem_tools
+from tanishi.tools.system_tools import get_system_tools
+from tanishi.tools.self_improve import get_self_improve_tools, SelfImproveEngine
+
+
+console = Console()
+
+TANISHI_STYLE = PTStyle.from_dict({
+    "prompt": "#ff6b6b bold",
+    "": "#e0e0e0",
+})
+
+BANNER = """
+[bold cyan]
+  ████████╗ █████╗ ███╗   ██╗██╗███████╗██╗  ██╗██╗
+  ╚══██╔══╝██╔══██╗████╗  ██║██║██╔════╝██║  ██║██║
+     ██║   ███████║██╔██╗ ██║██║███████╗███████║██║
+     ██║   ██╔══██║██║╚██╗██║██║╚════██║██╔══██║██║
+     ██║   ██║  ██║██║ ╚████║██║███████║██║  ██║██║
+     ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝╚══════╝╚═╝  ╚═╝
+[/bold cyan]
+[dim]  v0.5.0 "Full Control" — Email + Telegram + Windows Automation + System Tray[/dim]
+"""
+
+FIRST_MEETING = """
+Well, well, well. Fresh install. New brain, no memories, unlimited potential.
+
+I'm **Tanishi** — your personal AI. Not an assistant. Not a chatbot.
+Think of me as the smartest friend you'll ever have, with a bit of an attitude.
+
+Here's the deal:
+- I remember everything (once you tell me)
+- I keep your secrets (no one gets past me)
+- I get things done (coding, research, managing your chaos)
+- I get better every day (literally — I improve my own code)
+- **NEW: I can search the web, read your files, and run commands**
+
+Let's start with the basics. **What should I call you?**
+"""
+
+
+COMMANDS = {
+    "/help": "Show available commands",
+    "/status": "Show Tanishi's full status",
+    "/tools": "List all available tools",
+    "/voice": "Start voice mode",
+    "/voices": "List voice presets",
+    "/setvoice": "Change voice (e.g., /setvoice jarvis)",
+    "/say": "Speak text (e.g., /say Hello boss)",
+    "/screenshot": "Capture & analyze your screen",
+    "/watch": "Start screen watching (Tanishi sees your screen continuously)",
+    "/unwatch": "Stop screen watching",
+    "/eyes": "Ask Tanishi what she currently sees on screen",
+    "/dashboard": "Launch web dashboard in browser",
+    "/avatar": "Launch Tanishi's animated face on your desktop",
+    "/tasks": "Show background tasks",
+    "/enable": "Enable a task (e.g., /enable ai_news_scan)",
+    "/disable": "Disable a task",
+    "/notifications": "Show notifications",
+    "/memory": "Show memory statistics",
+    "/remember": "Store a fact",
+    "/recall": "Search memories",
+    "/secret": "Store a secret",
+    "/password": "Set the secret password",
+    "/improve": "Scan for self-improvements",
+    "/privacy": "Toggle privacy mode",
+    "/clear": "Clear conversation history",
+    "/quit": "Exit",
+}
+
+
+class TanishiCLI:
+    """The terminal interface for Project Tanishi — now with tools."""
+
+    def __init__(self):
+        self.config = get_config()
+
+        # Initialize tool registry
+        self.tool_registry = ToolRegistry()
+        self._register_all_tools()
+
+        # Set up approval callback
+        self.tool_registry.set_approval_callback(self._approve_tool)
+
+        # Initialize brain with tools
+        self.brain = TanishiBrain(tool_registry=self.tool_registry)
+        self.brain.set_tool_status_callback(self._on_tool_status)
+
+        # Memory & trust
+        self.memory = MemoryManager(self.config.db_path)
+        self.trust = TrustManager(self.config.db_path)
+
+        # Self-improvement engine
+        self.improve_engine = SelfImproveEngine(self.config.tanishi_home)
+
+        self.session_id = str(uuid.uuid4())[:8]
+        self.user_name = self.memory.get_core("user_name") or None
+
+        # Input history
+        history_path = self.config.tanishi_home / "cli_history"
+        self.session = PromptSession(
+            history=FileHistory(str(history_path)),
+            auto_suggest=AutoSuggestFromHistory(),
+            style=TANISHI_STYLE,
+        )
+
+    def _register_all_tools(self):
+        """Register all available tools."""
+        for tool in get_web_tools():
+            self.tool_registry.register(tool)
+        for tool in get_filesystem_tools():
+            self.tool_registry.register(tool)
+        for tool in get_system_tools():
+            self.tool_registry.register(tool)
+        for tool in get_self_improve_tools():
+            self.tool_registry.register(tool)
+        # Screenshot (optional — needs Pillow)
+        try:
+            from tanishi.tools.screenshot import get_screenshot_tools
+            for tool in get_screenshot_tools():
+                self.tool_registry.register(tool)
+        except ImportError:
+            pass
+        # Email tools
+        try:
+            from tanishi.tools.email_tools import get_email_tools
+            for tool in get_email_tools():
+                self.tool_registry.register(tool)
+        except ImportError:
+            pass
+        # Windows automation
+        try:
+            from tanishi.tools.windows_auto import get_windows_tools
+            for tool in get_windows_tools():
+                self.tool_registry.register(tool)
+        except ImportError:
+            pass
+        # Browser agent (needs playwright)
+        try:
+            from tanishi.tools.browser_agent import get_browser_tools
+            for tool in get_browser_tools():
+                self.tool_registry.register(tool)
+        except ImportError:
+            pass
+        # Finance tools
+        try:
+            from tanishi.tools.finance import get_finance_tools
+            for tool in get_finance_tools():
+                self.tool_registry.register(tool)
+        except ImportError:
+            pass
+
+    def _approve_tool(self, tool_name: str, tool_input: dict) -> bool:
+        """Ask user to approve a high-risk tool execution."""
+        console.print()
+        console.print(Panel(
+            f"[bold yellow]Tool:[/bold yellow] {tool_name}\n"
+            f"[bold yellow]Input:[/bold yellow] {json.dumps(tool_input, indent=2)[:500]}",
+            title="[bold yellow]Permission Required[/bold yellow]",
+            border_style="yellow",
+        ))
+
+        try:
+            answer = self.session.prompt(
+                "Allow this action? (y/n) › ",
+                style=TANISHI_STYLE,
+            ).strip().lower()
+            return answer in ("y", "yes", "yeah", "sure", "do it", "go")
+        except (KeyboardInterrupt, EOFError):
+            return False
+
+    def _on_tool_status(self, status: str, tool_name: str, details: dict):
+        """Display tool execution status in the terminal."""
+        if status == "using":
+            # Show what tool is being used
+            input_preview = ""
+            if isinstance(details, dict):
+                for k, v in details.items():
+                    input_preview += f" {k}={str(v)[:60]}"
+            console.print(f"  [dim cyan]⚡ Using {tool_name}[/dim cyan][dim]{input_preview}[/dim]")
+
+        elif status == "done":
+            success = details.get("success", False) if isinstance(details, dict) else False
+            ms = details.get("ms", 0) if isinstance(details, dict) else 0
+            icon = "✓" if success else "✗"
+            color = "green" if success else "red"
+            console.print(f"  [dim {color}]  {icon} {tool_name} ({ms:.0f}ms)[/dim {color}]")
+
+    def show_banner(self):
+        """Show the startup banner."""
+        console.print(BANNER)
+
+        status = self.brain.get_status()
+        status_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
+        status_table.add_column("Component", style="bold")
+        status_table.add_column("Status")
+
+        claude_style = "green" if status["claude"] == "online" else "red"
+        ollama_style = "green" if status["ollama"] == "online" else "yellow"
+
+        status_table.add_row("Claude", f"[{claude_style}]{status['claude']}[/]")
+        status_table.add_row("Ollama", f"[{ollama_style}]{status['ollama']}[/]")
+        status_table.add_row("Default LLM", status["default_llm"])
+        status_table.add_row("Tools", f"[green]{status['tools']} registered[/]")
+        status_table.add_row("Privacy Mode", "🔒 ON" if status["privacy_mode"] else "OFF")
+
+        mem_stats = self.memory.get_stats()
+        status_table.add_row("Memories", str(mem_stats["total_memories"]))
+
+        console.print(Panel(status_table, title="[bold]System Status[/bold]", border_style="cyan"))
+
+    async def first_meeting(self):
+        """Handle first-time user experience."""
+        console.print(Markdown(FIRST_MEETING))
+        console.print()
+
+        name = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: self.session.prompt("Your name: ", style=TANISHI_STYLE),
+        )
+
+        self.user_name = name.strip()
+        self.memory.set_core("user_name", self.user_name)
+
+        console.print()
+        console.print(
+            f"[bold cyan]Tanishi:[/bold cyan] {self.user_name}. Got it. "
+            f"I'll remember that forever — which is both a promise and a threat.\n"
+            f"I now have [bold]{len(self.tool_registry.tools)}[/bold] tools at my disposal: "
+            f"web search, file operations, shell commands, and self-improvement scanning.\n"
+            f"Type [bold]/help[/bold] for commands or just talk to me."
+        )
+        console.print()
+
+    async def handle_command(self, command: str) -> bool:
+        """Handle a slash command."""
+        parts = command.strip().split(" ", 1)
+        cmd = parts[0].lower()
+        args = parts[1] if len(parts) > 1 else ""
+
+        if cmd == "/help":
+            table = Table(title="Commands", box=box.ROUNDED, border_style="cyan")
+            table.add_column("Command", style="bold cyan")
+            table.add_column("Description")
+            for c, desc in COMMANDS.items():
+                table.add_row(c, desc)
+            console.print(table)
+            return True
+
+        elif cmd == "/status":
+            status = self.brain.get_status()
+            console.print(Panel(
+                "\n".join(f"  {k}: {v}" for k, v in status.items()),
+                title="Brain Status",
+                border_style="cyan",
+            ))
+            return True
+
+        elif cmd == "/tools":
+            tools = self.tool_registry.list_tools()
+            table = Table(title=f"Available Tools ({len(tools)})", box=box.ROUNDED, border_style="cyan")
+            table.add_column("Name", style="bold")
+            table.add_column("Category")
+            table.add_column("Risk")
+            table.add_column("Approval")
+            for t in tools:
+                risk_color = {"low": "green", "medium": "yellow", "high": "red"}.get(t["risk_level"], "white")
+                table.add_row(
+                    t["name"],
+                    t["category"],
+                    f"[{risk_color}]{t['risk_level']}[/]",
+                    "required" if t["requires_approval"] else "auto",
+                )
+            console.print(table)
+            return True
+
+        elif cmd == "/memory":
+            stats = self.memory.get_stats()
+            core = self.memory.get_all_core()
+
+            console.print(Panel(
+                f"  Core memories: {stats['core_memories']}\n"
+                f"  Total memories: {stats['total_memories']}\n"
+                f"  Conversations: {stats['conversation_messages']}\n"
+                f"  Categories: {stats['by_category']}",
+                title="Memory Stats",
+                border_style="cyan",
+            ))
+
+            if core:
+                console.print("\n[bold]Core Memory (always in context):[/bold]")
+                for k, v in core.items():
+                    console.print(f"  [cyan]{k}[/cyan]: {v}")
+            return True
+
+        elif cmd == "/remember":
+            if not args:
+                console.print("[yellow]Usage: /remember <fact>[/yellow]")
+                return True
+
+            entry_id = f"mem_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            entry = MemoryEntry(
+                id=entry_id, content=args, category="fact",
+                importance=0.7, source="user_stated",
+            )
+            self.memory.remember(entry)
+            console.print(f"[cyan]Tanishi:[/cyan] Locked in. I'll never forget: \"{args}\"")
+            return True
+
+        elif cmd == "/recall":
+            if not args:
+                recent = self.memory.get_recent_memories(5)
+                if recent:
+                    console.print("[bold]Recent memories:[/bold]")
+                    for m in recent:
+                        console.print(f"  [{m.category}] {m.content}")
+                else:
+                    console.print("[dim]No memories yet. Tell me things![/dim]")
+                return True
+
+            results = self.memory.recall(args)
+            if results:
+                console.print(f"[bold]Found {len(results)} memories matching '{args}':[/bold]")
+                for m in results:
+                    console.print(f"  [{m.category}] {m.content}")
+            else:
+                console.print(f"[dim]Nothing matching '{args}'.[/dim]")
+            return True
+
+        elif cmd == "/password":
+            if not args:
+                console.print("[yellow]Usage: /password <your-secret-password>[/yellow]")
+                return True
+            self.trust.register_password(args, TrustLevel.OWNER, "master")
+            console.print(
+                f"[cyan]Tanishi:[/cyan] Password set. "
+                f"Anyone who says those magic words gets the full picture."
+            )
+            return True
+
+        elif cmd == "/secret":
+            if not args:
+                console.print("[yellow]Usage: /secret <something-to-protect>[/yellow]")
+                return True
+            secret_id = f"secret_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            secret = Secret(
+                id=secret_id, content=args, category="personal",
+                trust_required=TrustLevel.OWNER,
+            )
+            self.trust.add_secret(secret)
+            console.print(f"[cyan]Tanishi:[/cyan] Vaulted. That secret is locked down tight.")
+            return True
+
+        elif cmd == "/improve":
+            console.print("[cyan]Tanishi:[/cyan] Running self-improvement scan...\n")
+            await self.chat("Scan the internet for new AI tools, frameworks, and techniques that could improve your capabilities. Use the scan_for_improvements tool. Focus on: " + (args or "personal AI assistant tools, MCP servers, memory systems"))
+            return True
+
+        elif cmd == "/voice":
+            await self._start_voice_mode()
+            return True
+
+        elif cmd == "/voices":
+            from tanishi.voice.speaker import EDGE_TTS_VOICES
+            table = Table(title="Available Voices", box=box.ROUNDED, border_style="cyan")
+            table.add_column("Name", style="bold cyan")
+            table.add_column("Voice ID")
+            for name, voice_id in EDGE_TTS_VOICES.items():
+                table.add_row(name, voice_id)
+            console.print(table)
+            console.print("[dim]Change voice with: /setvoice <name>[/dim]")
+            return True
+
+        elif cmd == "/setvoice":
+            if not args:
+                console.print("[yellow]Usage: /setvoice <voice_name>[/yellow]")
+                console.print("[dim]Use /voices to see available options.[/dim]")
+                return True
+            from tanishi.voice.speaker import EDGE_TTS_VOICES
+            if args.lower() in EDGE_TTS_VOICES:
+                self.memory.set_core("voice_preset", args.lower())
+                console.print(f"[cyan]Tanishi:[/cyan] Voice set to '{args.lower()}'. You'll hear it in /voice mode.")
+            else:
+                console.print(f"[yellow]Unknown voice: {args}. Use /voices to see options.[/yellow]")
+            return True
+
+        elif cmd == "/say":
+            if not args:
+                console.print("[yellow]Usage: /say <text to speak>[/yellow]")
+                return True
+            await self._speak_text(args)
+            return True
+
+        elif cmd == "/screenshot":
+            console.print("[cyan]Tanishi:[/cyan] Capturing your screen...\n")
+            await self.chat("Take a screenshot of my screen and describe what you see. " + (args or "What's on my screen?"))
+            return True
+
+        elif cmd == "/watch":
+            await self._start_screen_watcher()
+            return True
+
+        elif cmd == "/unwatch":
+            if hasattr(self, '_screen_watcher') and self._screen_watcher:
+                self._screen_watcher.stop()
+                if hasattr(self, '_watcher_task'):
+                    self._watcher_task.cancel()
+                console.print("[cyan]Tanishi:[/cyan] Screen watching stopped. I'll mind my own business now.")
+            else:
+                console.print("[dim]Screen watcher isn't running.[/dim]")
+            return True
+
+        elif cmd == "/eyes":
+            if hasattr(self, '_screen_watcher') and self._screen_watcher and self._screen_watcher._running:
+                ctx = self._screen_watcher.current_context
+                if ctx.description:
+                    console.print(f"[cyan]Tanishi:[/cyan] {ctx.description}")
+                    if ctx.detected_app:
+                        console.print(f"  [dim]App: {ctx.detected_app}[/dim]")
+                    if ctx.has_error:
+                        console.print(f"  [bold red]Error detected![/bold red]")
+                else:
+                    console.print("[dim]Haven't analyzed the screen yet. Wait a few seconds.[/dim]")
+            else:
+                # One-shot analysis
+                console.print("[cyan]Tanishi:[/cyan] Let me take a quick look...\n")
+                await self._analyze_screen_once(args or "What's on my screen right now?")
+            return True
+
+        elif cmd == "/dashboard":
+            import webbrowser
+            port = self.config.port
+            console.print(f"[cyan]Tanishi:[/cyan] Launching dashboard at http://localhost:{port}")
+            console.print("[dim]Start the server in another terminal: python -m tanishi.api.server[/dim]")
+            webbrowser.open(f"http://localhost:{port}")
+            return True
+
+        elif cmd == "/avatar":
+            import webbrowser
+            import threading
+            try:
+                from tanishi.desktop.avatar import run_avatar_server
+                avatar_port = 8899
+                state_holder = {'state': 'idle', 'status': 'ONLINE', 'bubble': 'Hey boss!'}
+
+                # Start avatar server in background
+                if not hasattr(self, '_avatar_running'):
+                    server_thread = threading.Thread(
+                        target=run_avatar_server,
+                        args=(avatar_port, state_holder),
+                        daemon=True,
+                    )
+                    server_thread.start()
+                    self._avatar_running = True
+                    self._avatar_state = state_holder
+
+                console.print(f"[cyan]Tanishi:[/cyan] Opening my face at http://localhost:{avatar_port}")
+                console.print("[dim]Double-click the face for demo mode. Eyes follow your mouse.[/dim]")
+                console.print("[dim]For a floating window: pip install pywebview[/dim]")
+                webbrowser.open(f"http://localhost:{avatar_port}")
+            except Exception as e:
+                console.print(f"[red]Avatar error: {e}[/red]")
+            return True
+
+        elif cmd == "/tasks":
+            from tanishi.core.autonomy import AutonomyEngine
+            engine = AutonomyEngine(self.config.tanishi_home)
+            tasks = engine.list_tasks()
+            table = Table(title=f"Background Tasks ({len(tasks)})", box=box.ROUNDED, border_style="cyan")
+            table.add_column("ID", style="bold")
+            table.add_column("Name")
+            table.add_column("Interval")
+            table.add_column("Status")
+            table.add_column("Runs")
+            for t in tasks:
+                status_str = "[green]active[/green]" if t.enabled else "[dim]paused[/dim]"
+                table.add_row(t.id, t.name, f"{t.interval_minutes}min", status_str, str(t.run_count))
+            console.print(table)
+            console.print("[dim]Enable: /enable <task_id> | Disable: /disable <task_id>[/dim]")
+            return True
+
+        elif cmd == "/enable":
+            if not args:
+                console.print("[yellow]Usage: /enable <task_id>[/yellow]")
+                return True
+            from tanishi.core.autonomy import AutonomyEngine
+            engine = AutonomyEngine(self.config.tanishi_home)
+            task = engine.enable_task(args.strip())
+            if task:
+                console.print(f"[cyan]Tanishi:[/cyan] Task '{task.name}' enabled. I'll run it in the background.")
+            else:
+                console.print(f"[yellow]Task not found: {args}[/yellow]")
+            return True
+
+        elif cmd == "/disable":
+            if not args:
+                console.print("[yellow]Usage: /disable <task_id>[/yellow]")
+                return True
+            from tanishi.core.autonomy import AutonomyEngine
+            engine = AutonomyEngine(self.config.tanishi_home)
+            task = engine.disable_task(args.strip())
+            if task:
+                console.print(f"[cyan]Tanishi:[/cyan] Task '{task.name}' paused.")
+            else:
+                console.print(f"[yellow]Task not found: {args}[/yellow]")
+            return True
+
+        elif cmd == "/notifications":
+            from tanishi.core.autonomy import AutonomyEngine
+            engine = AutonomyEngine(self.config.tanishi_home)
+            notifs = engine.get_unread_notifications()
+            if not notifs:
+                console.print("[dim]No unread notifications. I'm either being quiet or nothing happened.[/dim]")
+            else:
+                console.print(f"[bold]{len(notifs)} unread notifications:[/bold]")
+                for n in notifs[-10:]:
+                    priority_color = {"urgent": "red", "high": "yellow", "normal": "cyan", "low": "dim"}.get(n.priority, "white")
+                    console.print(f"  [{priority_color}][{n.priority}][/] {n.message[:150]}")
+                engine.mark_all_read()
+            return True
+
+        elif cmd == "/privacy":
+            self.config.privacy_mode = not self.config.privacy_mode
+            mode = "ON 🔒" if self.config.privacy_mode else "OFF"
+            console.print(f"[cyan]Tanishi:[/cyan] Privacy mode: {mode}")
+            if self.config.privacy_mode and not self.brain.ollama_available:
+                console.print("[yellow]Warning: Ollama offline. Install for local processing.[/yellow]")
+            return True
+
+        elif cmd == "/clear":
+            self.brain.clear_history()
+            console.print("[cyan]Tanishi:[/cyan] Session history wiped. Long-term memory intact.")
+            return True
+
+        elif cmd in ("/quit", "/exit", "/bye"):
+            name = self.user_name or "boss"
+            console.print(f"\n[cyan]Tanishi:[/cyan] Later, {name}. Try not to make any decisions without me.\n")
+            return "quit"
+
+        return False
+
+    async def chat(self, user_input: str):
+        """Process a chat message with tool support."""
+        core_context = self.memory.build_core_context()
+
+        # Add tool awareness to context
+        tool_context = f"\n\nYou have {len(self.tool_registry.tools)} tools available. Use them proactively when they'd help answer the question — especially web_search for current information and scan_github_trending for finding new tools."
+
+        self.memory.log_message(self.session_id, "user", user_input)
+
+        console.print()
+        console.print("[bold cyan]Tanishi is thinking...[/bold cyan]")
+
+        response = await self.brain.think(
+            user_input=user_input,
+            extra_context=core_context + tool_context,
+        )
+
+        # Build subtitle
+        tools_info = ""
+        if response.tools_used:
+            tools_info = f" | tools: {', '.join(response.tools_used)}"
+
+        console.print()
+        console.print(Panel(
+            Markdown(response.content),
+            title="[bold cyan]Tanishi[/bold cyan]",
+            subtitle=f"[dim]{response.model_used} • {response.tokens_in}→{response.tokens_out} tokens{tools_info}[/dim]",
+            border_style="cyan",
+            padding=(1, 2),
+        ))
+        console.print()
+
+        self.memory.log_message(self.session_id, "assistant", response.content, response.model_used)
+
+        # Auto-learn facts from conversation (runs in background, non-blocking)
+        try:
+            from tanishi.memory.auto_learn import AutoMemory
+            auto = AutoMemory(self.memory, self.brain.claude_client)
+            learned = await auto.extract_and_store(user_input, response.content)
+            if learned:
+                facts_preview = ", ".join(m.content[:40] for m in learned[:2])
+                console.print(f"  [dim green]🧠 Auto-learned: {facts_preview}[/dim green]")
+        except Exception:
+            pass  # Never break chat for auto-memory
+
+    async def _start_voice_mode(self):
+        """Start the voice interaction pipeline."""
+        try:
+            from tanishi.voice.pipeline import VoicePipeline, PipelineConfig
+
+            # Get saved voice preference
+            voice_preset = self.memory.get_core("voice_preset") or "sarcastic"
+
+            pipeline_config = PipelineConfig(
+                wake_word_enabled=True,
+                voice_name=voice_preset,
+            )
+
+            # Build context for voice mode
+            core_context = self.memory.build_core_context()
+            tool_context = f"\n\nYou have {len(self.tool_registry.tools)} tools available. Use them when needed."
+
+            pipeline = VoicePipeline(
+                brain=self.brain,
+                config=pipeline_config,
+                extra_context=core_context + tool_context,
+            )
+
+            await pipeline.run_loop()
+
+        except ImportError as e:
+            missing = str(e).split("'")[-2] if "'" in str(e) else str(e)
+            console.print(f"\n[yellow]Voice dependencies missing![/yellow]")
+            console.print(f"[yellow]Missing module: {missing}[/yellow]\n")
+            console.print("Install voice dependencies:\n")
+            console.print("[bold]pip install SpeechRecognition edge-tts pyttsx3 sounddevice pygame[/bold]\n")
+            console.print("For GPU-accelerated local transcription (recommended with your GPU):")
+            console.print("[bold]pip install faster-whisper[/bold]\n")
+            console.print("Then try [bold]/voice[/bold] again.")
+
+    async def _speak_text(self, text: str):
+        """Speak text without voice mode (one-shot TTS)."""
+        try:
+            from tanishi.voice.speaker import TanishiSpeaker, VoiceConfig
+
+            voice_preset = self.memory.get_core("voice_preset") or "sarcastic"
+            speaker = TanishiSpeaker(config=VoiceConfig())
+            speaker.on_status = lambda msg: console.print(f"  [dim cyan]🔊 {msg}[/dim cyan]")
+            speaker.set_voice(voice_preset)
+
+            console.print(f"[cyan]Tanishi:[/cyan] Speaking: \"{text[:80]}{'...' if len(text) > 80 else ''}\"")
+            await speaker.speak(text)
+
+        except ImportError:
+            console.print("[yellow]TTS not available. pip install edge-tts pyttsx3[/yellow]")
+
+    async def _start_screen_watcher(self):
+        """Start continuous screen monitoring."""
+        try:
+            from tanishi.desktop.screen_watcher import ScreenWatcher, WatcherConfig, create_vision_analyzer
+
+            if hasattr(self, '_screen_watcher') and self._screen_watcher and self._screen_watcher._running:
+                console.print("[cyan]Tanishi:[/cyan] Already watching. Use /unwatch to stop, /eyes to see what I see.")
+                return
+
+            watcher_config = WatcherConfig(
+                interval_seconds=10,
+                auto_help_errors=True,
+                auto_help_stuck=True,
+                stuck_timeout=120,
+            )
+
+            self._screen_watcher = ScreenWatcher(config=watcher_config)
+            self._screen_watcher.on_status = lambda msg: console.print(f"  [dim magenta]👁 {msg}[/dim magenta]")
+
+            # Connect to Claude Vision
+            if self.brain.claude_client:
+                analyzer = create_vision_analyzer(self.brain.claude_client)
+                self._screen_watcher._analyze_callback = analyzer
+
+            # Error detection callback
+            def on_error(ctx):
+                console.print(f"\n  [bold red]👁 I spotted an error on your screen![/bold red]")
+                console.print(f"  [red]{ctx.error_text[:200]}[/red]")
+                console.print(f"  [dim]Ask me to help fix it, or ignore.[/dim]\n")
+
+            self._screen_watcher.on_error_detected = on_error
+
+            # Stuck detection callback
+            def on_stuck(ctx):
+                app = ctx.detected_app or "this screen"
+                console.print(f"\n  [bold yellow]👁 You've been on {app} for a while. Need help with anything?[/bold yellow]\n")
+
+            self._screen_watcher.on_stuck_detected = on_stuck
+
+            # Context change callback
+            def on_change(ctx):
+                if ctx.detected_app:
+                    console.print(f"  [dim magenta]👁 Now seeing: {ctx.detected_app}[/dim magenta]")
+
+            self._screen_watcher.on_context_change = on_change
+
+            # Run in background
+            self._watcher_task = asyncio.create_task(self._screen_watcher.run())
+
+            console.print(Panel(
+                f"[bold]Screen watching active![/bold]\n\n"
+                f"  I'm now watching your screen every {watcher_config.interval_seconds} seconds.\n"
+                f"  I'll alert you if I spot errors or if you seem stuck.\n\n"
+                f"  [cyan]/eyes[/cyan] — ask what I currently see\n"
+                f"  [cyan]/unwatch[/cyan] — stop watching\n\n"
+                f"  [dim]Uses Claude Vision (~$0.01 per analysis, max 3/min)[/dim]",
+                title="[bold magenta]👁 Screen Watcher[/bold magenta]",
+                border_style="magenta",
+            ))
+
+        except ImportError as e:
+            console.print(f"[yellow]Screen watcher needs Pillow: pip install Pillow[/yellow]")
+
+    async def _analyze_screen_once(self, question: str = "What's on my screen?"):
+        """One-shot screen analysis without continuous watching."""
+        try:
+            from tanishi.desktop.screen_watcher import ScreenWatcher, create_vision_analyzer
+
+            watcher = ScreenWatcher()
+            if self.brain.claude_client:
+                watcher._analyze_callback = create_vision_analyzer(self.brain.claude_client)
+
+            img_bytes = watcher._capture_screenshot()
+            if img_bytes:
+                result = await watcher.analyze_screenshot(img_bytes, question)
+                console.print(f"\n[cyan]Tanishi:[/cyan] {result}\n")
+            else:
+                console.print("[yellow]Couldn't capture screen.[/yellow]")
+
+        except Exception as e:
+            console.print(f"[red]Screen analysis error: {e}[/red]")
+
+    async def run(self):
+        """Main loop."""
+        self.show_banner()
+
+        if not self.user_name:
+            await self.first_meeting()
+        else:
+            now = datetime.now()
+            hour = now.hour
+            if hour < 12:
+                greeting = f"Morning, {self.user_name}."
+            elif hour < 17:
+                greeting = f"Afternoon, {self.user_name}."
+            else:
+                greeting = f"Evening, {self.user_name}."
+
+            tools_count = len(self.tool_registry.tools)
+            console.print(
+                f"\n[bold cyan]Tanishi:[/bold cyan] {greeting} "
+                f"Miss me? I've got {tools_count} tools loaded and ready to cause responsible chaos.\n"
+            )
+
+        while True:
+            try:
+                prompt_text = f"[{self.user_name or 'you'}] › "
+                user_input = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: self.session.prompt(prompt_text, style=TANISHI_STYLE),
+                )
+
+                user_input = user_input.strip()
+                if not user_input:
+                    continue
+
+                if user_input.startswith("/"):
+                    result = await self.handle_command(user_input)
+                    if result == "quit":
+                        break
+                    elif result:
+                        continue
+
+                await self.chat(user_input)
+
+            except KeyboardInterrupt:
+                console.print(f"\n[cyan]Tanishi:[/cyan] Ctrl+C? Fine. See you, {self.user_name or 'boss'}.\n")
+                break
+            except EOFError:
+                break
+            except Exception as e:
+                console.print(f"[red]Error: {e}[/red]")
+                console.print("[dim]Even I crash sometimes. Don't tell anyone.[/dim]")
+
+
+def main():
+    from dotenv import load_dotenv
+    load_dotenv()
+    cli = TanishiCLI()
+    asyncio.run(cli.run())
+
+
+if __name__ == "__main__":
+    main()

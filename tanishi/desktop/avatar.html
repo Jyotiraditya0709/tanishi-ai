@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tanishi</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    background: #0a0a12;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Segoe UI', sans-serif;
+    user-select: none;
+}
+
+/* Ambient glow */
+.glow-bg {
+    position: absolute;
+    width: 300px;
+    height: 300px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(0,200,255,0.08) 0%, transparent 70%);
+    animation: breathe 4s ease-in-out infinite;
+    pointer-events: none;
+}
+@keyframes breathe { 0%,100% { transform: scale(1); opacity: 0.6; } 50% { transform: scale(1.15); opacity: 1; } }
+
+/* The Face Container */
+.face {
+    position: relative;
+    width: 200px;
+    height: 200px;
+    transition: transform 0.3s ease;
+}
+
+/* Core ring — the "body" */
+.ring {
+    position: absolute;
+    width: 180px;
+    height: 180px;
+    left: 10px;
+    top: 10px;
+    border: 2px solid rgba(0,200,255,0.3);
+    border-radius: 50%;
+    animation: ring-pulse 3s ease-in-out infinite;
+}
+.ring::after {
+    content: '';
+    position: absolute;
+    inset: 8px;
+    border: 1px solid rgba(0,200,255,0.15);
+    border-radius: 50%;
+}
+@keyframes ring-pulse { 0%,100% { border-color: rgba(0,200,255,0.3); } 50% { border-color: rgba(0,200,255,0.6); } }
+
+/* Eyes */
+.eyes {
+    position: absolute;
+    top: 70px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 40px;
+}
+.eye {
+    width: 22px;
+    height: 22px;
+    background: #00c8ff;
+    border-radius: 50%;
+    position: relative;
+    box-shadow: 0 0 15px rgba(0,200,255,0.6), 0 0 30px rgba(0,200,255,0.2);
+    transition: all 0.3s ease;
+}
+.eye .pupil {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background: #0a0a12;
+    border-radius: 50%;
+    top: 6px;
+    left: 6px;
+    transition: all 0.15s ease;
+}
+.eye .glint {
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    background: #fff;
+    border-radius: 50%;
+    top: 4px;
+    left: 12px;
+}
+
+/* Mouth */
+.mouth {
+    position: absolute;
+    top: 120px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 30px;
+    height: 3px;
+    background: rgba(0,200,255,0.5);
+    border-radius: 2px;
+    transition: all 0.3s ease;
+}
+
+/* Status text */
+.status {
+    margin-top: 30px;
+    color: rgba(0,200,255,0.6);
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    text-align: center;
+    transition: all 0.3s ease;
+    height: 16px;
+}
+
+/* Speech bubble */
+.bubble {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,200,255,0.08);
+    border: 1px solid rgba(0,200,255,0.2);
+    border-radius: 12px;
+    padding: 8px 14px;
+    max-width: 280px;
+    font-size: 11px;
+    color: rgba(255,255,255,0.7);
+    text-align: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+.bubble.visible { opacity: 1; }
+
+/* ==================== STATES ==================== */
+
+/* IDLE — calm, slow blink */
+.state-idle .eye { animation: blink 4s ease-in-out infinite; }
+@keyframes blink {
+    0%,42%,50%,100% { height: 22px; }
+    45%,47% { height: 2px; border-radius: 50%; }
+}
+
+/* LISTENING — eyes wide, ring brightens */
+.state-listening .eye {
+    width: 26px;
+    height: 26px;
+    box-shadow: 0 0 20px rgba(0,200,255,0.8), 0 0 40px rgba(0,200,255,0.3);
+}
+.state-listening .ring {
+    border-color: rgba(0,200,255,0.7);
+    animation: ring-listen 1s ease-in-out infinite;
+}
+@keyframes ring-listen { 0%,100% { border-color: rgba(0,200,255,0.5); } 50% { border-color: rgba(0,200,255,0.9); } }
+
+/* THINKING — eyes squint, ring spins */
+.state-thinking .eye {
+    height: 12px;
+    border-radius: 50%;
+}
+.state-thinking .ring {
+    animation: ring-spin 2s linear infinite;
+    border-color: rgba(255,180,0,0.5);
+    border-top-color: rgba(255,180,0,0.9);
+}
+.state-thinking .eye {
+    background: #ffb400;
+    box-shadow: 0 0 15px rgba(255,180,0,0.6);
+}
+.state-thinking .status { color: rgba(255,180,0,0.7); }
+@keyframes ring-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+/* SPEAKING — mouth animates, eyes engaged */
+.state-speaking .mouth {
+    animation: speak 0.3s ease-in-out infinite alternate;
+    background: rgba(0,200,255,0.8);
+}
+.state-speaking .eye {
+    box-shadow: 0 0 20px rgba(0,200,255,0.7);
+}
+@keyframes speak {
+    0% { width: 30px; height: 3px; border-radius: 2px; }
+    100% { width: 20px; height: 12px; border-radius: 50%; }
+}
+
+/* SARCASTIC — one eye squints, smirk */
+.state-sarcastic .eye:first-child {
+    height: 12px;
+}
+.state-sarcastic .mouth {
+    width: 25px;
+    height: 8px;
+    border-radius: 0 0 12px 2px;
+    background: rgba(255,107,107,0.6);
+    transform: translateX(-50%) rotate(-5deg);
+}
+.state-sarcastic .ring {
+    border-color: rgba(255,107,107,0.4);
+}
+.state-sarcastic .eye {
+    background: #ff6b6b;
+    box-shadow: 0 0 15px rgba(255,107,107,0.6);
+}
+.state-sarcastic .status { color: rgba(255,107,107,0.7); }
+
+/* HAPPY — eyes curve, smile */
+.state-happy .eye {
+    height: 10px;
+    border-radius: 10px 10px 0 0;
+}
+.state-happy .mouth {
+    width: 30px;
+    height: 12px;
+    border-radius: 0 0 15px 15px;
+    background: rgba(77,222,128,0.6);
+}
+.state-happy .ring {
+    border-color: rgba(77,222,128,0.5);
+}
+.state-happy .eye {
+    background: #4ade80;
+    box-shadow: 0 0 15px rgba(77,222,128,0.6);
+}
+.state-happy .status { color: rgba(77,222,128,0.7); }
+
+/* ERROR — red, alert */
+.state-error .eye {
+    background: #ff4444;
+    box-shadow: 0 0 20px rgba(255,68,68,0.8);
+    animation: error-flash 0.5s ease-in-out infinite;
+}
+.state-error .ring {
+    border-color: rgba(255,68,68,0.6);
+}
+.state-error .mouth {
+    width: 20px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(255,68,68,0.5);
+}
+.state-error .status { color: rgba(255,68,68,0.8); }
+@keyframes error-flash { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+/* SLEEPING */
+.state-sleeping .eye {
+    height: 2px;
+    background: rgba(0,200,255,0.3);
+    box-shadow: none;
+}
+.state-sleeping .mouth {
+    width: 15px;
+    height: 2px;
+    background: rgba(0,200,255,0.2);
+}
+.state-sleeping .ring {
+    border-color: rgba(0,200,255,0.1);
+    animation: none;
+}
+.state-sleeping .status { color: rgba(255,255,255,0.2); }
+
+/* Eye tracking — pupils follow mouse */
+.face:hover .eye .pupil {
+    transition: all 0.05s ease;
+}
+</style>
+</head>
+<body>
+
+<div class="glow-bg"></div>
+
+<div class="face state-idle" id="face">
+    <div class="ring"></div>
+    <div class="eyes">
+        <div class="eye" id="eye-left">
+            <div class="pupil" id="pupil-left"></div>
+            <div class="glint"></div>
+        </div>
+        <div class="eye" id="eye-right">
+            <div class="pupil" id="pupil-right"></div>
+            <div class="glint"></div>
+        </div>
+    </div>
+    <div class="mouth" id="mouth"></div>
+</div>
+
+<div class="status" id="status">ONLINE</div>
+<div class="bubble" id="bubble"></div>
+
+<script>
+const face = document.getElementById('face');
+const status = document.getElementById('status');
+const bubble = document.getElementById('bubble');
+const pupilL = document.getElementById('pupil-left');
+const pupilR = document.getElementById('pupil-right');
+
+const API_BASE = 'http://localhost:8888';
+let currentState = 'idle';
+
+// ==================== Eye Tracking ====================
+document.addEventListener('mousemove', (e) => {
+    const rect = face.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = (e.clientX - cx) / window.innerWidth * 6;
+    const dy = (e.clientY - cy) / window.innerHeight * 6;
+    
+    pupilL.style.transform = `translate(${dx}px, ${dy}px)`;
+    pupilR.style.transform = `translate(${dx}px, ${dy}px)`;
+});
+
+// ==================== State Management ====================
+function setState(newState, statusText, bubbleText) {
+    if (currentState === newState) return;
+    
+    face.className = 'face state-' + newState;
+    currentState = newState;
+    
+    if (statusText) status.textContent = statusText;
+    
+    if (bubbleText) {
+        bubble.textContent = bubbleText;
+        bubble.classList.add('visible');
+        setTimeout(() => bubble.classList.remove('visible'), 4000);
+    }
+}
+
+// ==================== API Polling ====================
+let lastResponse = '';
+
+async function pollStatus() {
+    try {
+        const res = await fetch(API_BASE + '/status');
+        if (!res.ok) throw new Error('offline');
+        const data = await res.json();
+        
+        // Check brain status
+        const brain = data.brain || {};
+        
+        if (brain.claude !== 'online') {
+            setState('sleeping', 'OFFLINE', 'Server disconnected...');
+            return;
+        }
+        
+        // If not already in a specific state, go idle
+        if (currentState === 'sleeping') {
+            setState('idle', 'ONLINE', 'Back online!');
+        }
+        
+    } catch (e) {
+        setState('sleeping', 'OFFLINE', null);
+    }
+}
+
+// ==================== WebSocket for real-time state ====================
+// Falls back to polling if WS not available
+
+function connectWebSocket() {
+    try {
+        // We'll use a custom endpoint for avatar state
+        // For now, poll the status endpoint
+        setInterval(pollStatus, 5000);
+    } catch (e) {
+        setInterval(pollStatus, 5000);
+    }
+}
+
+// ==================== External State Control ====================
+// The Tanishi CLI/API can control the avatar via postMessage or URL params
+
+window.addEventListener('message', (event) => {
+    const data = event.data;
+    if (data.state) setState(data.state, data.status, data.bubble);
+});
+
+// Also check URL hash for state (for iframe embedding)
+function checkHash() {
+    const hash = window.location.hash.substring(1);
+    if (hash) {
+        try {
+            const data = JSON.parse(decodeURIComponent(hash));
+            if (data.state) setState(data.state, data.status, data.bubble);
+        } catch (e) {}
+    }
+}
+setInterval(checkHash, 500);
+
+// ==================== Demo Cycle ====================
+// Shows off all states if no API connected
+
+let demoMode = false;
+let demoTimeout;
+
+function startDemo() {
+    demoMode = true;
+    const states = [
+        ['idle', 'ONLINE', 'Just vibing...'],
+        ['listening', 'LISTENING', 'I hear you...'],
+        ['thinking', 'THINKING', 'Let me process that...'],
+        ['sarcastic', 'OH REALLY?', 'Was that supposed to impress me?'],
+        ['speaking', 'SPEAKING', 'Here\'s what I think...'],
+        ['happy', 'HAPPY', 'That actually worked!'],
+        ['error', 'ERROR', 'Something broke...'],
+        ['idle', 'ONLINE', null],
+    ];
+    
+    let i = 0;
+    function next() {
+        if (!demoMode) return;
+        const [state, statusText, bubbleText] = states[i % states.length];
+        setState(state, statusText, bubbleText);
+        i++;
+        demoTimeout = setTimeout(next, 3000);
+    }
+    next();
+}
+
+function stopDemo() {
+    demoMode = false;
+    clearTimeout(demoTimeout);
+    setState('idle', 'ONLINE', null);
+}
+
+// Double-click to toggle demo
+face.addEventListener('dblclick', () => {
+    if (demoMode) stopDemo();
+    else startDemo();
+});
+
+// ==================== Init ====================
+connectWebSocket();
+pollStatus();
+
+// Show startup animation
+setTimeout(() => setState('idle', 'ONLINE', 'Tanishi is watching...'), 500);
+setTimeout(() => {
+    setState('sarcastic', 'READY', 'Miss me?');
+    setTimeout(() => setState('idle', 'ONLINE', null), 2000);
+}, 2000);
+</script>
+</body>
+</html>
