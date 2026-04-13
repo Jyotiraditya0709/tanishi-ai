@@ -14,6 +14,7 @@ import re
 import asyncio
 import tempfile
 import random
+from pathlib import Path
 from typing import Optional, Callable
 from dataclasses import dataclass
 
@@ -53,6 +54,9 @@ DEFAULT_VOICE = "sarcastic"
 class TanishiSpeaker:
     """Text-to-speech that sounds like a real human conversation."""
 
+    # Pre-cached filler phrases for instant playback
+    FILLER_PHRASES = ["On it.", "One sec.", "Let me check.", "Got it.", "Checking now.", "Hmm let me see."]
+
     def __init__(self, config: Optional[VoiceConfig] = None):
         self.config = config or VoiceConfig()
         self.backend = self.config.backend
@@ -60,6 +64,14 @@ class TanishiSpeaker:
         self._is_speaking = False
         self._stop_requested = False
         self.on_status: Optional[Callable] = None
+
+        # v4: Persistent pygame mixer (don't reinit every time)
+        self._pygame_initialized = False
+
+        # v4: Filler audio cache
+        self._filler_cache_dir = Path.home() / ".tanishi" / "voice_cache"
+        self._filler_cache_dir.mkdir(parents=True, exist_ok=True)
+        self._filler_files: dict[str, str] = {}
 
         self._detect_backend()
 
@@ -96,6 +108,61 @@ class TanishiSpeaker:
     def _status(self, msg: str):
         if self.on_status:
             self.on_status(msg)
+
+    async def precache_fillers(self):
+        """Pre-generate filler audio files for instant playback. Call once at startup."""
+        if self.backend != "openai" or not self._openai_key:
+            return
+
+        import httpx
+
+        valid_openai_ids = {"alloy", "echo", "fable", "onyx", "nova", "shimmer"}
+        voice_id = self.config.voice_id if self.config.voice_id in valid_openai_ids else "onyx"
+
+        for phrase in self.FILLER_PHRASES:
+            cache_key = f"{voice_id}_{phrase.replace(' ', '_').replace('.', '')}"
+            cache_path = self._filler_cache_dir / f"{cache_key}.mp3"
+
+            if cache_path.exists():
+                self._filler_files[phrase] = str(cache_path)
+                continue
+
+            try:
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    resp = await client.post(
+                        "https://api.openai.com/v1/audio/speech",
+                        headers={
+                            "Authorization": f"Bearer {self._openai_key}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": "tts-1",
+                            "voice": voice_id,
+                            "input": phrase,
+                            "speed": self.config.speed,
+                        },
+                    )
+                    if resp.status_code == 200:
+                        cache_path.write_bytes(resp.content)
+                        self._filler_files[phrase] = str(cache_path)
+            except Exception:
+                pass
+
+        if self._filler_files:
+            self._status(f"Voice: cached {len(self._filler_files)} fillers for instant playback")
+
+    async def speak_cached_filler(self) -> bool:
+        """Play a random pre-cached filler instantly. Returns True if played."""
+        if not self._filler_files:
+            return False
+
+        phrase = random.choice(list(self._filler_files.keys()))
+        file_path = self._filler_files[phrase]
+
+        if os.path.exists(file_path):
+            await self._play_audio(file_path)
+            return True
+        return False
 
     def stop(self):
         self._stop_requested = True
@@ -204,12 +271,12 @@ class TanishiSpeaker:
         await asyncio.get_event_loop().run_in_executor(None, _do)
 
     async def _play_audio(self, file_path: str):
-        """Play audio with interrupt support."""
-        # Try pygame
+        """Play audio with interrupt support. Keeps pygame mixer alive for speed."""
         try:
             import pygame
-            if not pygame.mixer.get_init():
+            if not self._pygame_initialized:
                 pygame.mixer.init()
+                self._pygame_initialized = True
             pygame.mixer.music.load(file_path)
             pygame.mixer.music.set_volume(self.config.volume)
             pygame.mixer.music.play()
@@ -218,9 +285,12 @@ class TanishiSpeaker:
                     pygame.mixer.music.stop()
                     break
                 await asyncio.sleep(0.05)
-            pygame.mixer.quit()
             return
         except ImportError:
+            pass
+        except Exception:
+            # If pygame fails, try reinitializing
+            self._pygame_initialized = False
             pass
 
         # Fallback: playsound
