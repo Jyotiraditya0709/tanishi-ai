@@ -1,0 +1,113 @@
+experiment_id	timestamp	area	score	quality	latency_ms	reliability	status	description
+baseline_1775560366	2026-04-07T11:12:46.320974	baseline	0.693394	0.6963	5277	1.0000	keep	initial baseline
+exp_1775560366_0001	2026-04-07T11:12:46.322723	tool_descriptions	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no mutation rules registered for area 'tool_descriptions'
+exp_1775560366_0002	2026-04-07T11:12:46.334831	routing_logic	0.710006	0.6962	4679	1.0000	keep	routing: use Haiku for simple queries (faster + cheaper)
+exp_1775560419_0003	2026-04-07T11:13:39.794613	memory_retrieval	0.706540	0.6937	4750	1.0000	discard	memory: lower similarity threshold 0.75 -> 0.70 (recall more)
+exp_1775590747_0001	2026-04-07T19:39:07.593559	tool_descriptions	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no mutation rules registered for area 'tool_descriptions'
+exp_1775590747_0002	2026-04-07T19:39:07.615190	routing_logic	0.601901	0.5900	6276	1.0000	discard	routing: try Ollama first for greetings/chitchat
+exp_1775591136_0001	2026-04-07T19:45:36.918208	tool_descriptions	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no mutation rules registered for area 'tool_descriptions'
+exp_1775591136_0002	2026-04-07T19:45:36.948292	routing_logic	0.659220	0.6338	5157	1.0000	discard	routing: try Ollama first for greetings/chitchat
+exp_1775591600_0001	2026-04-07T19:53:20.165071	tool_descriptions	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no mutation rules registered for area 'tool_descriptions'
+exp_1775591600_0002	2026-04-07T19:53:20.194811	routing_logic	0.669370	0.6500	5143	1.0000	discard	routing: try Ollama first for greetings/chitchat
+exp_1775591859_0001	2026-04-07T19:57:39.996902	tool_descriptions	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no mutation rules registered for area 'tool_descriptions'
+exp_1775591860_0002	2026-04-07T19:57:40.032624	routing_logic	0.783611	0.8500	5350	1.0000	keep	routing: try Ollama first for greetings/chitchat
+exp_1775592356_0001	2026-04-07T20:05:56.922119	tool_descriptions	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no mutation rules registered for area 'tool_descriptions'
+exp_1775592356_0002	2026-04-07T20:05:56.946242	routing_logic	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no applicable mutations found for area 'routing_logic'
+exp_1775592356_0003	2026-04-07T20:05:56.982130	memory_retrieval	0.783624	0.8287	4891	1.0000	discard	memory: lower similarity threshold 0.75 -> 0.70 (recall more)
+exp_1775592720_0004	2026-04-07T20:12:00.224025	voice_params	0.855043	0.9437	4803	1.0000	keep	voice: smaller TTS chunks 50 -> 40 (lower latency)
+exp_1775593044_0005	2026-04-07T20:17:24.024930	tool_params	0.835178	0.9038	4655	1.0000	discard	tools: more retries 1 -> 2
+exp_1775593416_0006	2026-04-07T20:23:36.313998	system_prompt	0.719506	0.7750	6038	1.0000	discard	system_prompt: encourage tool-first behavior
+exp_1775593724_0007	2026-04-07T20:28:44.211494	tool_descriptions	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no mutation rules registered for area 'tool_descriptions'
+exp_1775593724_0008	2026-04-07T20:28:44.261442	routing_logic	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no applicable mutations found for area 'routing_logic'
+exp_1775593724_0009	2026-04-07T20:28:44.303206	memory_retrieval	0.805948	0.8812	5221	1.0000	discard	memory: increase top_k 5 -> 7
+exp_1775593996_0010	2026-04-07T20:33:16.953330	voice_params	0.850091	0.9375	4847	1.0000	discard	voice: smaller TTS chunks 40 -> 30 (lower latency)
+exp_1775594299_0011	2026-04-07T20:38:19.055882	tool_params	0.762336	0.7913	4847	1.0000	discard	tools: tighten timeout 10s -> 8s (fail fast)
+exp_1775594662_0012	2026-04-07T20:44:22.062734	system_prompt	0.767053	0.8313	5541	1.0000	discard	system_prompt: add explicit conciseness instruction
+exp_1775595006_0013	2026-04-07T20:50:06.960431	tool_descriptions	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no mutation rules registered for area 'tool_descriptions'
+exp_1775595007_0014	2026-04-07T20:50:07.022101	routing_logic	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no applicable mutations found for area 'routing_logic'
+exp_1775595012_0015	2026-04-07T20:50:12.875151	memory_retrieval	0.815798	0.8900	5055	1.0000	discard	memory: lower similarity threshold 0.75 -> 0.70 (recall more)
+exp_1775595378_0016	2026-04-07T20:56:18.627715	voice_params	0.774865	0.8250	5125	1.0000	discard	voice: smaller TTS chunks 40 -> 30 (lower latency)
+exp_1775595736_0017	2026-04-07T21:02:16.192136	tool_params	0.825021	0.9187	5344	1.0000	discard	tools: more retries 1 -> 2
+exp_1775596080_0018	2026-04-07T21:08:00.703358	system_prompt	0.801233	0.8750	5256	1.0000	discard	system_prompt: encourage tool-first behavior
+exp_1775596396_0019	2026-04-07T21:13:16.272435	tool_descriptions	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no mutation rules registered for area 'tool_descriptions'
+exp_1775596396_0020	2026-04-07T21:13:16.305256	routing_logic	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no applicable mutations found for area 'routing_logic'
+exp_1775596396_0021	2026-04-07T21:13:16.337165	memory_retrieval	0.745355	0.7950	5539	1.0000	discard	memory: increase top_k 5 -> 7
+exp_1775596748_0022	2026-04-07T21:19:08.508404	voice_params	0.835797	0.9000	4551	1.0000	discard	voice: smaller TTS chunks 40 -> 30 (lower latency)
+exp_1775597089_0023	2026-04-07T21:24:49.362954	tool_params	0.823713	0.8975	4932	1.0000	discard	tools: tighten timeout 10s -> 8s (fail fast)
+exp_1775597417_0024	2026-04-07T21:30:17.350902	system_prompt	0.781173	0.8100	4574	1.0000	discard	system_prompt: add explicit conciseness instruction
+exp_1775597740_0025	2026-04-07T21:35:40.131960	tool_descriptions	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no mutation rules registered for area 'tool_descriptions'
+exp_1775597742_0026	2026-04-07T21:35:42.658646	routing_logic	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no applicable mutations found for area 'routing_logic'
+exp_1775597742_0027	2026-04-07T21:35:42.683918	memory_retrieval	0.848871	0.9350	4837	1.0000	discard	memory: lower similarity threshold 0.75 -> 0.70 (recall more)
+exp_1775598091_0028	2026-04-07T21:41:31.785382	voice_params	0.776750	0.8213	4976	1.0000	discard	voice: smaller TTS chunks 40 -> 30 (lower latency)
+exp_1775598398_0029	2026-04-07T21:46:38.313588	tool_params	0.822482	0.8562	4086	1.0000	discard	tools: more retries 1 -> 2
+exp_1775598703_0030	2026-04-07T21:51:43.971763	system_prompt	0.786680	0.8350	4916	1.0000	discard	system_prompt: encourage tool-first behavior
+exp_1775599016_0031	2026-04-07T21:56:56.153092	tool_descriptions	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no mutation rules registered for area 'tool_descriptions'
+exp_1775599019_0032	2026-04-07T21:56:59.183653	routing_logic	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no applicable mutations found for area 'routing_logic'
+exp_1775599022_0033	2026-04-07T21:57:02.269515	memory_retrieval	0.813250	0.8937	5228	1.0000	discard	memory: increase top_k 5 -> 7
+exp_1775599417_0034	2026-04-07T22:03:37.071161	voice_params	0.789091	0.8850	5909	1.0000	discard	voice: smaller TTS chunks 40 -> 30 (lower latency)
+exp_1775599707_0035	2026-04-07T22:08:27.429332	tool_params	0.821829	0.9000	5054	1.0000	discard	tools: tighten timeout 10s -> 8s (fail fast)
+exp_1775600035_0036	2026-04-07T22:13:55.794688	system_prompt	0.806735	0.8938	5463	1.0000	discard	system_prompt: add explicit conciseness instruction
+exp_1775600411_0037	2026-04-07T22:20:11.360165	tool_descriptions	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no mutation rules registered for area 'tool_descriptions'
+exp_1775600411_0038	2026-04-07T22:20:11.399486	routing_logic	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no applicable mutations found for area 'routing_logic'
+exp_1775600411_0039	2026-04-07T22:20:11.431123	memory_retrieval	0.744615	0.7975	5620	1.0000	discard	memory: lower similarity threshold 0.75 -> 0.70 (recall more)
+exp_1775600756_0040	2026-04-07T22:25:56.124005	voice_params	0.788896	0.8413	4971	1.0000	discard	voice: smaller TTS chunks 40 -> 30 (lower latency)
+exp_1775601120_0041	2026-04-07T22:32:00.047752	tool_params	0.856269	0.9213	4273	1.0000	keep	tools: more retries 1 -> 2
+exp_1775601457_0042	2026-04-07T22:37:37.418047	system_prompt	0.829595	0.9437	5720	1.0000	discard	system_prompt: encourage tool-first behavior
+exp_1775601753_0043	2026-04-07T22:42:33.551877	tool_descriptions	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no mutation rules registered for area 'tool_descriptions'
+exp_1775601757_0044	2026-04-07T22:42:37.274464	routing_logic	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no applicable mutations found for area 'routing_logic'
+exp_1775601757_0045	2026-04-07T22:42:37.295260	memory_retrieval	0.779981	0.8225	4887	1.0000	discard	memory: increase top_k 5 -> 7
+exp_1775602100_0046	2026-04-07T22:48:20.453279	voice_params	0.789827	0.8375	4856	1.0000	discard	voice: smaller TTS chunks 40 -> 30 (lower latency)
+exp_1775602431_0047	2026-04-07T22:53:51.444053	tool_params	0.836095	0.9413	5432	1.0000	discard	tools: tighten timeout 10s -> 8s (fail fast)
+exp_1775602777_0048	2026-04-07T22:59:37.064037	system_prompt	0.769235	0.8250	5328	1.0000	discard	system_prompt: add explicit conciseness instruction
+exp_1775603141_0049	2026-04-07T23:05:41.796895	tool_descriptions	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no mutation rules registered for area 'tool_descriptions'
+exp_1775603141_0050	2026-04-07T23:05:41.833487	routing_logic	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no applicable mutations found for area 'routing_logic'
+exp_1775603141_0051	2026-04-07T23:05:41.865656	memory_retrieval	0.753416	0.8163	5708	1.0000	discard	memory: lower similarity threshold 0.75 -> 0.70 (recall more)
+exp_1775603521_0052	2026-04-07T23:12:01.629443	voice_params	0.771570	0.8412	5594	1.0000	discard	voice: smaller TTS chunks 40 -> 30 (lower latency)
+exp_1775603927_0053	2026-04-07T23:18:47.020663	tool_params	0.768577	0.8250	5351	1.0000	discard	tools: more retries 2 -> 3
+exp_1775604298_0054	2026-04-07T23:24:58.835047	system_prompt	0.755895	0.8063	5403	1.0000	discard	system_prompt: encourage tool-first behavior
+exp_1775604649_0055	2026-04-07T23:30:49.730422	tool_descriptions	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no mutation rules registered for area 'tool_descriptions'
+exp_1775604653_0056	2026-04-07T23:30:53.114012	routing_logic	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no applicable mutations found for area 'routing_logic'
+exp_1775604653_0057	2026-04-07T23:30:53.134688	memory_retrieval	0.785789	0.8688	5677	1.0000	discard	memory: increase top_k 5 -> 7
+exp_1775604959_0058	2026-04-07T23:35:59.878442	voice_params	0.776878	0.8225	4998	1.0000	discard	voice: smaller TTS chunks 40 -> 30 (lower latency)
+exp_1775605191_0059	2026-04-07T23:39:51.580439	tool_params	0.783882	0.8412	5151	1.0000	discard	tools: tighten timeout 10s -> 8s (fail fast)
+exp_1775605547_0060	2026-04-07T23:45:47.026195	system_prompt	0.816313	0.8875	4983	1.0000	discard	system_prompt: add explicit conciseness instruction
+exp_1775605875_0061	2026-04-07T23:51:15.096112	tool_descriptions	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no mutation rules registered for area 'tool_descriptions'
+exp_1775605875_0062	2026-04-07T23:51:15.131858	routing_logic	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no applicable mutations found for area 'routing_logic'
+exp_1775605878_0063	2026-04-07T23:51:18.042880	memory_retrieval	0.785592	0.8313	4874	1.0000	discard	memory: lower similarity threshold 0.75 -> 0.70 (recall more)
+exp_1775606197_0064	2026-04-07T23:56:37.861980	voice_params	0.805644	0.9187	6042	1.0000	discard	voice: smaller TTS chunks 40 -> 30 (lower latency)
+exp_1775606519_0065	2026-04-08T00:01:59.553224	tool_params	0.819007	0.8950	5048	1.0000	discard	tools: more retries 2 -> 3
+exp_1775606895_0066	2026-04-08T00:08:15.682535	system_prompt	0.766474	0.8600	6183	1.0000	discard	system_prompt: encourage tool-first behavior
+exp_1775607213_0067	2026-04-08T00:13:33.509602	tool_descriptions	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no mutation rules registered for area 'tool_descriptions'
+exp_1775607215_0068	2026-04-08T00:13:35.969281	routing_logic	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no applicable mutations found for area 'routing_logic'
+exp_1775607219_0069	2026-04-08T00:13:39.711605	memory_retrieval	0.839685	0.9125	4681	1.0000	discard	memory: increase top_k 5 -> 7
+exp_1775607574_0070	2026-04-08T00:19:34.496520	voice_params	0.807847	0.8912	5369	1.0000	discard	voice: smaller TTS chunks 40 -> 30 (lower latency)
+exp_1775607918_0071	2026-04-08T00:25:18.344534	tool_params	0.744698	0.7937	5536	1.0000	discard	tools: tighten timeout 10s -> 8s (fail fast)
+exp_1775608290_0072	2026-04-08T00:31:30.201776	system_prompt	0.840234	0.9250	4932	1.0000	discard	system_prompt: add explicit conciseness instruction
+exp_1775608644_0073	2026-04-08T00:37:24.940941	tool_descriptions	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no mutation rules registered for area 'tool_descriptions'
+exp_1775608648_0074	2026-04-08T00:37:28.396790	routing_logic	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no applicable mutations found for area 'routing_logic'
+exp_1775608648_0075	2026-04-08T00:37:28.421001	memory_retrieval	0.834303	0.9125	4875	1.0000	discard	memory: lower similarity threshold 0.75 -> 0.70 (recall more)
+exp_1775609005_0076	2026-04-08T00:43:25.790952	voice_params	0.771014	0.7900	4507	1.0000	discard	voice: smaller TTS chunks 40 -> 30 (lower latency)
+exp_1775609388_0077	2026-04-08T00:49:48.667015	tool_params	0.825934	0.9125	5176	1.0000	discard	tools: more retries 2 -> 3
+exp_1775609736_0078	2026-04-08T00:55:36.755184	system_prompt	0.823095	0.9187	5414	1.0000	discard	system_prompt: encourage tool-first behavior
+exp_1775610093_0079	2026-04-08T01:01:33.352810	tool_descriptions	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no mutation rules registered for area 'tool_descriptions'
+exp_1775610093_0080	2026-04-08T01:01:33.392034	routing_logic	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no applicable mutations found for area 'routing_logic'
+exp_1775610093_0081	2026-04-08T01:01:33.420918	memory_retrieval	0.804699	0.9100	5887	1.0000	discard	memory: increase top_k 5 -> 7
+exp_1775610471_0082	2026-04-08T01:07:51.379549	voice_params	0.778346	0.8538	5621	1.0000	discard	voice: smaller TTS chunks 40 -> 30 (lower latency)
+exp_1775610762_0083	2026-04-08T01:12:42.829986	tool_params	0.835060	0.9412	5469	1.0000	discard	tools: tighten timeout 10s -> 8s (fail fast)
+exp_1775611045_0084	2026-04-08T01:17:25.376303	system_prompt	0.834954	0.9287	5203	1.0000	discard	system_prompt: add explicit conciseness instruction
+exp_1775611390_0085	2026-04-08T01:23:10.065067	tool_descriptions	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no mutation rules registered for area 'tool_descriptions'
+exp_1775611390_0086	2026-04-08T01:23:10.097772	routing_logic	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no applicable mutations found for area 'routing_logic'
+exp_1775611390_0087	2026-04-08T01:23:10.130895	memory_retrieval	0.804892	0.8912	5475	1.0000	discard	memory: lower similarity threshold 0.75 -> 0.70 (recall more)
+exp_1775611706_0088	2026-04-08T01:28:26.606761	voice_params	0.807082	0.9000	5585	1.0000	discard	voice: smaller TTS chunks 40 -> 30 (lower latency)
+exp_1775612076_0089	2026-04-08T01:34:36.398091	tool_params	0.793724	0.8662	5337	1.0000	discard	tools: more retries 2 -> 3
+exp_1775612374_0090	2026-04-08T01:39:34.889324	system_prompt	0.680470	0.7100	6039	1.0000	discard	system_prompt: encourage tool-first behavior
+exp_1775612784_0091	2026-04-08T01:46:24.842287	tool_descriptions	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no mutation rules registered for area 'tool_descriptions'
+exp_1775612787_0092	2026-04-08T01:46:27.942819	routing_logic	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no applicable mutations found for area 'routing_logic'
+exp_1775612787_0093	2026-04-08T01:46:27.972004	memory_retrieval	0.848716	0.9625	5436	1.0000	discard	memory: increase top_k 5 -> 7
+exp_1775613174_0094	2026-04-08T01:52:54.439251	voice_params	0.798746	0.8625	5075	1.0000	discard	voice: smaller TTS chunks 40 -> 30 (lower latency)
+exp_1775613550_0095	2026-04-08T01:59:10.739463	tool_params	0.787025	0.8525	5281	1.0000	discard	tools: tighten timeout 10s -> 8s (fail fast)
+exp_1775613919_0096	2026-04-08T02:05:19.290760	system_prompt	0.809319	0.8788	5046	1.0000	discard	system_prompt: add explicit conciseness instruction
+exp_1775614263_0097	2026-04-08T02:11:03.448895	tool_descriptions	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no mutation rules registered for area 'tool_descriptions'
+exp_1775614263_0098	2026-04-08T02:11:03.485795	routing_logic	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no applicable mutations found for area 'routing_logic'
+exp_1775614263_0099	2026-04-08T02:11:03.518955	memory_retrieval	0.780227	0.8125	4662	1.0000	discard	memory: lower similarity threshold 0.75 -> 0.70 (recall more)
+exp_1775614539_0100	2026-04-08T02:15:39.195977	voice_params	0.839473	0.9563	5634	1.0000	discard	voice: smaller TTS chunks 40 -> 30 (lower latency)

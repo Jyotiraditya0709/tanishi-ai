@@ -107,6 +107,7 @@ COMMANDS = {
     "/agents": "List available specialist agents",
     "/privacy": "Toggle privacy mode",
     "/mcp": "MCP servers (e.g., /mcp list, /mcp connect github, /mcp servers)",
+    "/realtime": "Start Realtime voice mode (sub-second, speech-to-speech)",
     "/clear": "Clear conversation history",
     "/quit": "Exit",
 }
@@ -530,6 +531,24 @@ class TanishiCLI:
 
         elif cmd == "/voice":
             await self._start_voice_mode()
+            return True
+
+        elif cmd == "/realtime":
+            try:
+                from tanishi.voice.realtime import start_realtime_voice
+                voice_preset = self.memory.get_core("voice_preset") or "sarcastic"
+                # Map preset to OpenAI voice ID
+                voice_map = {"jarvis": "onyx", "friday": "nova", "sarcastic": "onyx",
+                             "warm": "nova", "smooth": "shimmer", "storyteller": "fable",
+                             "neutral": "alloy", "deep": "echo"}
+                voice_id = voice_map.get(voice_preset, args if args else "onyx")
+                await start_realtime_voice(voice=voice_id)
+            except ImportError as e:
+                missing = str(e).split("'")[-2] if "'" in str(e) else str(e)
+                console.print(f"\n[yellow]Missing module: {missing}[/yellow]")
+                console.print("[bold]pip install websockets sounddevice numpy[/bold]\n")
+            except Exception as e:
+                console.print(f"[red]Realtime error: {e}[/red]")
             return True
 
         elif cmd == "/voices":
