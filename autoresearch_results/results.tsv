@@ -111,3 +111,8 @@ exp_1775614263_0097	2026-04-08T02:11:03.448895	tool_descriptions	0.000000	0.0000
 exp_1775614263_0098	2026-04-08T02:11:03.485795	routing_logic	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no applicable mutations found for area 'routing_logic'
 exp_1775614263_0099	2026-04-08T02:11:03.518955	memory_retrieval	0.780227	0.8125	4662	1.0000	discard	memory: lower similarity threshold 0.75 -> 0.70 (recall more)
 exp_1775614539_0100	2026-04-08T02:15:39.195977	voice_params	0.839473	0.9563	5634	1.0000	discard	voice: smaller TTS chunks 40 -> 30 (lower latency)
+exp_1776185784_0001	2026-04-14T16:56:24.928738	routing_logic	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no applicable mutations found for area 'routing_logic'
+exp_1776185784_0002	2026-04-14T16:56:24.930355	routing_logic	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no applicable mutations found for area 'routing_logic'
+exp_1776186536_0001	2026-04-14T17:08:56.125862	memory_retrieval	0.780384	0.7137	2523	1.0000	discard	memory: increase top_k 5 -> 7
+exp_1776186565_0002	2026-04-14T17:09:25.573519	memory_retrieval	0.718002	0.6050	2420	1.0000	discard	memory: increase top_k 5 -> 7
+exp_1776186594_0003	2026-04-14T17:09:54.929720	memory_retrieval	0.716656	0.6063	2495	1.0000	discard	memory: increase top_k 5 -> 7
