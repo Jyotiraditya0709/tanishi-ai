@@ -149,7 +149,7 @@ def log_result(result: ExperimentResult, mutation_detail: dict):
         f.write(json.dumps(record) + "\n")
 
 def load_baseline() -> float | None:
-    """Read the most recent KEPT score from results.tsv as the baseline to beat."""
+    """Read the best KEPT score from results.tsv, or 0.0 if the file exists but has no keep rows."""
     if not RESULTS_TSV.exists():
         return None
     best = None
@@ -164,7 +164,7 @@ def load_baseline() -> float | None:
                         best = score
                 except ValueError:
                     pass
-    return best
+    return 0.0 if best is None else best
 
 # ---------------------------------------------------------------------------
 # Single experiment
