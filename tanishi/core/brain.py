@@ -10,6 +10,7 @@ This loop continues until Claude has a final text response.
 
 import asyncio
 import json
+import re
 import httpx
 import anthropic
 from typing import AsyncGenerator, Callable, Optional
@@ -76,6 +77,8 @@ class TanishiBrain:
         self.claude_client = None
         self.ollama_available = False
         self.tool_registry = tool_registry or ToolRegistry()
+        if tool_registry is None:
+            self._register_default_tools()
         self.max_tool_loops = 10
         self._tool_status_callback: Optional[Callable] = None
         self._init_clients()
@@ -83,6 +86,17 @@ class TanishiBrain:
     def set_tool_status_callback(self, callback: Callable):
         """Set callback for tool execution status (for CLI display)."""
         self._tool_status_callback = callback
+
+    def _register_default_tools(self):
+        """Provide baseline tools when brain is used standalone."""
+        try:
+            from tanishi.tools.system_tools import get_system_tools
+            wanted = {"get_datetime", "get_system_info"}
+            for tool in get_system_tools():
+                if tool.name in wanted:
+                    self.tool_registry.register(tool)
+        except Exception:
+            pass
 
     def _init_clients(self):
         if self.config.anthropic_api_key:
@@ -107,6 +121,8 @@ class TanishiBrain:
         }
 
     def _select_model(self, user_input: str) -> str:
+        if self._needs_realtime_tools(user_input) and self.claude_client:
+            return "claude"
         if self.config.privacy_mode and self.ollama_available:
             return "ollama"
         if should_use_local(user_input, self.config) and self.ollama_available:
@@ -136,6 +152,16 @@ class TanishiBrain:
     @staticmethod
     def _approx_prompt_tokens(text: str) -> int:
         return max(1, len(text) // 4)
+
+    @staticmethod
+    def _needs_realtime_tools(user_input: str) -> bool:
+        patterns = (
+            r"\b(time|clock|date|today|now|current)\b",
+            r"\b(cpu|ram|memory|battery|disk|system|process)\b",
+            r"\b(weather|temperature)\b",
+        )
+        text = user_input.lower()
+        return any(re.search(pattern, text) for pattern in patterns)
 
     def _claude_model_for_input(self, user_input: str) -> str:
         if self._approx_prompt_tokens(user_input) >= routing_cfg.COMPLEXITY_THRESHOLD_TOKENS:
