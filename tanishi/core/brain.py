@@ -8,6 +8,7 @@ Claude returns tool_use blocks. We execute them and feed results back.
 This loop continues until Claude has a final text response.
 """
 
+import asyncio
 import json
 import httpx
 import anthropic
@@ -204,7 +205,9 @@ class TanishiBrain:
                 if tools:
                     api_kwargs["tools"] = tools
 
-                response = self.claude_client.messages.create(**api_kwargs)
+                response = await asyncio.to_thread(
+                    self.claude_client.messages.create, **api_kwargs
+                )
                 total_in += response.usage.input_tokens
                 total_out += response.usage.output_tokens
 
