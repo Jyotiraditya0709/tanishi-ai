@@ -14,6 +14,7 @@ import anthropic
 from typing import AsyncGenerator, Callable, Optional
 from dataclasses import dataclass, field
 
+from tanishi.config import routing as routing_cfg
 from tanishi.core import get_config
 from tanishi.core.personality import get_system_prompt
 from tanishi.tools.registry import ToolRegistry, ToolResult
@@ -109,6 +110,12 @@ class TanishiBrain:
             return "ollama"
         if should_use_local(user_input, self.config) and self.ollama_available:
             return "ollama"
+        if (
+            routing_cfg.LOCAL_FIRST
+            and self.ollama_available
+            and self._approx_prompt_tokens(user_input) < routing_cfg.COMPLEXITY_THRESHOLD_TOKENS
+        ):
+            return "ollama"
         if self.config.default_llm == "ollama" and self.ollama_available:
             return "ollama"
         if self.config.default_llm == "claude" and self.claude_client:
@@ -124,6 +131,15 @@ class TanishiBrain:
         if self.ollama_available:
             return "ollama"
         raise RuntimeError("No LLM available!")
+
+    @staticmethod
+    def _approx_prompt_tokens(text: str) -> int:
+        return max(1, len(text) // 4)
+
+    def _claude_model_for_input(self, user_input: str) -> str:
+        if self._approx_prompt_tokens(user_input) >= routing_cfg.COMPLEXITY_THRESHOLD_TOKENS:
+            return routing_cfg.COMPLEX_QUERY_MODEL
+        return routing_cfg.SIMPLE_QUERY_MODEL
 
     def _build_messages(self, user_input: str) -> list[dict]:
         messages = []
@@ -157,7 +173,9 @@ class TanishiBrain:
         messages = self._build_messages(user_input)
 
         if model == "claude":
-            response = await self._think_claude_with_tools(system_prompt, messages)
+            response = await self._think_claude_with_tools(
+                system_prompt, messages, user_input=user_input
+            )
         else:
             response = await self._think_ollama(system_prompt, messages)
 
@@ -166,18 +184,19 @@ class TanishiBrain:
         return response
 
     async def _think_claude_with_tools(
-        self, system_prompt: str, messages: list[dict]
+        self, system_prompt: str, messages: list[dict], user_input: str
     ) -> BrainResponse:
         """Claude with full agentic tool use loop."""
         tools = self.tool_registry.get_claude_tools()
         total_in = 0
         total_out = 0
         tools_used = []
+        claude_model = self._claude_model_for_input(user_input)
 
         try:
             for loop_count in range(self.max_tool_loops):
                 api_kwargs = {
-                    "model": self.config.claude_model,
+                    "model": claude_model,
                     "max_tokens": 4096,
                     "system": system_prompt,
                     "messages": messages,
@@ -231,7 +250,7 @@ class TanishiBrain:
 
                     return BrainResponse(
                         content=final_text,
-                        model_used=f"claude ({self.config.claude_model})",
+                        model_used=f"claude ({claude_model})",
                         tokens_in=total_in,
                         tokens_out=total_out,
                         tools_used=tools_used,
@@ -239,7 +258,7 @@ class TanishiBrain:
 
             return BrainResponse(
                 content="Hit my tool loop limit. Let me just answer directly.",
-                model_used=f"claude ({self.config.claude_model})",
+                model_used=f"claude ({claude_model})",
                 tokens_in=total_in,
                 tokens_out=total_out,
                 tools_used=tools_used,
