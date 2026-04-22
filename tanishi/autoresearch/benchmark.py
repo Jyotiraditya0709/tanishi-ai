@@ -145,19 +145,21 @@ async def _run_task_async(task, brain):
         response = await asyncio.wait_for(brain.think(task.prompt), timeout=task.timeout_s)
         text = response.content if hasattr(response, "content") else str(response)
         tools_used = list(getattr(response, "tools_used", []) or [])
-        if task.expected_tool:
-            if tools_used is None:
-                print(
-                    f"[benchmark] WARNING: task '{task.name}' expects tool "
-                    f"'{task.expected_tool}', but response has no tool telemetry."
-                )
-            elif task.expected_tool not in tools_used:
-                print(
-                    f"[benchmark] WARNING: task '{task.name}' expected tool "
-                    f"'{task.expected_tool}', but used tools={tools_used}"
-                )
+        tool_expected_but_missing = False
+        if task.expected_tool and task.expected_tool not in tools_used:
+            print(
+                f"[benchmark] WARNING: task '{task.name}' expected tool "
+                f"'{task.expected_tool}', but used tools={tools_used}"
+            )
+            tool_expected_but_missing = True
         latency = (time.time() - t0) * 1000
         quality = judge_response(task, text)
+        if tool_expected_but_missing and quality > 0.3:
+            print(
+                f"[benchmark] WARNING: capping quality for '{task.name}' to 0.30 "
+                f"because expected tool was not used."
+            )
+            quality = 0.3
         return TaskResult(
             task.name,
             task.category,
