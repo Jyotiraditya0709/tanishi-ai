@@ -169,7 +169,7 @@ def load_baseline() -> float | None:
 # Single experiment
 # ---------------------------------------------------------------------------
 
-def run_one_experiment(experiment_num: int, area: str | None, baseline: float) -> ExperimentResult:
+def run_one_experiment(experiment_num: int, area: str, baseline: float) -> ExperimentResult | None:
     """Mutate, benchmark, decide keep/discard. Always returns a result (never raises)."""
     experiment_id = f"exp_{int(time.time())}_{experiment_num:04d}"
     timestamp = datetime.utcnow().isoformat()
@@ -178,22 +178,26 @@ def run_one_experiment(experiment_num: int, area: str | None, baseline: float) -
     print(f"[experiment {experiment_num}] id={experiment_id}")
     print(f"[experiment {experiment_num}] baseline_score={baseline:.6f}")
 
-    # 1. Snapshot current state so we can revert
-    snap = snapshot_state(experiment_id)
-
-    # 2. Pick an area and propose a mutation
-    chosen_area = area or pick_area(experiment_num)
+    # 1. Pick an area and propose a mutation
+    chosen_area = area
     print(f"[experiment {experiment_num}] area={chosen_area}")
     try:
         mutation = propose_mutation(chosen_area, history_path=EXPERIMENTS_LOG)
         print(f"[experiment {experiment_num}] proposed: {mutation['description']}")
     except Exception as e:
+        msg = str(e)
+        if "no applicable mutations found for area" in msg or "no mutation rules registered for area" in msg:
+            print(f"[experiment {experiment_num}] skipping area due to mutation unavailability: {msg}")
+            return None
         print(f"[experiment {experiment_num}] mutation proposal failed: {e}")
         return ExperimentResult(
             experiment_id, timestamp, chosen_area,
             score=0.0, quality=0.0, latency_ms=0.0, reliability=0.0,
             status="crash", description=f"mutation_proposal_failed: {e}",
         )
+
+    # 2. Snapshot current state so we can revert
+    snap = snapshot_state(experiment_id)
 
     # 3. Apply the mutation to actual Tanishi files
     try:
@@ -252,9 +256,9 @@ def run_one_experiment(experiment_num: int, area: str | None, baseline: float) -
         description=mutation["description"],
     )
 
-def pick_area(experiment_num: int) -> str:
-    """Round-robin through areas, with slight bias toward unexplored ones."""
-    return EXPERIMENT_AREAS[experiment_num % len(EXPERIMENT_AREAS)]
+def pick_area(area_index: int) -> str:
+    """Round-robin through available experiment areas."""
+    return EXPERIMENT_AREAS[area_index % len(EXPERIMENT_AREAS)]
 
 # ---------------------------------------------------------------------------
 # Main loop
@@ -312,19 +316,29 @@ def main():
 
     # Main experiment loop
     experiment_num = 0
+    area_index = 0
     kept_count = 0
     try:
         while args.max_experiments == -1 or experiment_num < args.max_experiments:
-            experiment_num += 1
+            chosen_area = args.area or pick_area(area_index)
+            if not args.area:
+                area_index += 1
             try:
-                result = run_one_experiment(experiment_num, args.area, baseline)
+                result = run_one_experiment(experiment_num + 1, chosen_area, baseline)
             except KeyboardInterrupt:
                 raise
             except Exception as e:
-                print(f"[experiment {experiment_num}] OUTER crash: {e}")
+                print(f"[experiment {experiment_num + 1}] OUTER crash: {e}")
                 traceback.print_exc()
                 continue
 
+            if result is None:
+                if args.area:
+                    print("[loop] selected area has no available mutations; stopping early.")
+                    break
+                continue
+
+            experiment_num += 1
             log_result(result, {"description": result.description})
 
             if result.status == "keep":
