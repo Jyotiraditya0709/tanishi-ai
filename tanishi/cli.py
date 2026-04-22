@@ -12,6 +12,7 @@ import os
 import sys
 import uuid
 import asyncio
+import argparse
 import json
 from datetime import datetime
 from pathlib import Path
@@ -111,6 +112,56 @@ COMMANDS = {
     "/clear": "Clear conversation history",
     "/quit": "Exit",
 }
+
+
+def run_dependency_check() -> int:
+    """Check optional runtime dependencies and key environment variables."""
+    checks = [
+        ("voice_tts_edge", "edge_tts", "Edge TTS voice backend"),
+        ("voice_tts_local", "pyttsx3", "Local fallback TTS"),
+        ("voice_playback", "pygame", "Audio playback backend"),
+        ("speech_input", "speech_recognition", "Microphone speech recognition"),
+        ("wake_word", "pvporcupine", "Wake-word detection"),
+        ("wake_recorder", "pvrecorder", "Wake-word audio recorder"),
+        ("browser_agent", "playwright", "Browser automation"),
+        ("desktop_screenshot", "PIL", "Screenshot and image handling"),
+    ]
+
+    table = Table(title="Tanishi Optional Dependency Check", box=box.ROUNDED)
+    table.add_column("Feature", style="cyan")
+    table.add_column("Module", style="magenta")
+    table.add_column("Status", style="green")
+
+    missing = 0
+    for feature, module_name, label in checks:
+        try:
+            __import__(module_name)
+            table.add_row(label, module_name, "OK")
+        except Exception:
+            missing += 1
+            table.add_row(label, module_name, "MISSING")
+
+    env_checks = [
+        ("Anthropic", "ANTHROPIC_API_KEY"),
+        ("OpenAI", "OPENAI_API_KEY"),
+        ("Picovoice", "PICOVOICE_ACCESS_KEY"),
+        ("Gmail address", "GMAIL_ADDRESS"),
+        ("Gmail app password", "GMAIL_APP_PASSWORD"),
+    ]
+    env_table = Table(title="Key Environment Variables", box=box.ROUNDED)
+    env_table.add_column("Integration", style="cyan")
+    env_table.add_column("Variable", style="magenta")
+    env_table.add_column("Status", style="green")
+    for label, key in env_checks:
+        status = "SET" if os.getenv(key, "").strip() else "NOT SET"
+        env_table.add_row(label, key, status)
+
+    console.print(table)
+    console.print(env_table)
+    console.print(
+        f"[bold]{'Dependency check complete.'}[/bold] Missing optional modules: {missing}"
+    )
+    return 0
 
 
 class TanishiCLI:
@@ -1054,7 +1105,17 @@ def main():
     from dotenv import load_dotenv
     load_dotenv()
 
+    parser = argparse.ArgumentParser(description="Tanishi CLI")
+    parser.add_argument(
+        "--check-deps",
+        action="store_true",
+        help="Validate optional dependencies and key env vars, then exit.",
+    )
+    args = parser.parse_args()
+
     try:
+        if args.check_deps:
+            raise SystemExit(run_dependency_check())
         cli = TanishiCLI()
         asyncio.run(cli.run())
     except KeyboardInterrupt:
