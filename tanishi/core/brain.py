@@ -11,6 +11,7 @@ This loop continues until Claude has a final text response.
 import asyncio
 import json
 import re
+import warnings
 import httpx
 import anthropic
 from typing import AsyncGenerator, Callable, Optional
@@ -82,6 +83,12 @@ class TanishiBrain:
         self.max_tool_loops = 10
         self._tool_status_callback: Optional[Callable] = None
         self._init_clients()
+        if not self.tool_registry.tools:
+            warnings.warn(
+                "TanishiBrain started with no tools registered; tool-use requests will fail.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
 
     def set_tool_status_callback(self, callback: Callable):
         """Set callback for tool execution status (for CLI display)."""
