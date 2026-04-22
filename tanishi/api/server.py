@@ -152,6 +152,22 @@ async def status():
     }
 
 
+@app.get("/health")
+async def health():
+    brain_status = brain.get_status() if brain else {}
+    return {
+        "ok": bool(brain and memory and autonomy),
+        "tools": brain_status.get("tools", 0),
+        "deps": {
+            "brain": brain is not None,
+            "memory": memory is not None,
+            "autonomy": autonomy is not None,
+            "llm_available": brain_status.get("claude") == "online"
+            or brain_status.get("ollama") == "online",
+        },
+    }
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     if not brain:
