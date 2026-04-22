@@ -13,10 +13,14 @@ Tanishi doesn't wait to be asked — she anticipates.
 
 import json
 import asyncio
+import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Callable
 from dataclasses import dataclass, field
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -74,15 +78,19 @@ class AutonomyEngine:
                 for t in data:
                     task = ScheduledTask(**t)
                     self.tasks[task.id] = task
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to load tasks state from %s: %s", self.tasks_file, e)
 
         if self.notifications_file.exists():
             try:
                 data = json.loads(self.notifications_file.read_text())
                 self.notifications = [Notification(**n) for n in data[-50:]]  # Keep last 50
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(
+                    "Failed to load notifications state from %s: %s",
+                    self.notifications_file,
+                    e,
+                )
 
     def _save_state(self):
         """Save tasks and notifications to disk."""
@@ -288,8 +296,8 @@ class AutonomyEngine:
 
                         self._save_state()
 
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Autonomy background loop iteration failed: %s", e)
 
             # Check every 60 seconds
             await asyncio.sleep(60)
