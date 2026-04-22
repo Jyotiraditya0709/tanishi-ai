@@ -16,9 +16,13 @@ from dataclasses import dataclass, field
 
 try:
     from tanishi.core.brain import TanishiBrain
+    from tanishi.tools import register_all_tools
+    from tanishi.tools.registry import ToolRegistry
     BRAIN_IMPORT_ERROR = None
 except ImportError as e:
     TanishiBrain = None
+    register_all_tools = None
+    ToolRegistry = None
     BRAIN_IMPORT_ERROR = str(e)
 
 
@@ -190,7 +194,9 @@ def run_benchmark_suite(time_budget_s=180, hard_timeout_s=360):
         raise CrashStorm(f"TanishiBrain not importable: {BRAIN_IMPORT_ERROR}")
 
     try:
-        brain = TanishiBrain()
+        registry = ToolRegistry()
+        register_all_tools(None, registry)
+        brain = TanishiBrain(tool_registry=registry)
     except Exception as e:
         traceback.print_exc()
         raise CrashStorm(f"TanishiBrain() init failed: {e}")
