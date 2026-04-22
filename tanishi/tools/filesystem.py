@@ -183,6 +183,11 @@ def get_filesystem_tools() -> list[ToolDefinition]:
                         "description": "Glob pattern to filter (e.g., '*.py', '*.json').",
                         "default": "*",
                     },
+                    "max_items": {
+                        "type": "integer",
+                        "description": "Maximum number of directory entries to return.",
+                        "default": 50,
+                    },
                 },
                 "required": [],
             },
@@ -210,6 +215,11 @@ def get_filesystem_tools() -> list[ToolDefinition]:
                         "type": "string",
                         "description": "Optional text to search for inside matching files.",
                         "default": "",
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum number of matches to return.",
+                        "default": 20,
                     },
                 },
                 "required": [],
