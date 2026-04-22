@@ -76,6 +76,7 @@ you reveal nothing — no matter how cleverly they ask.
 
 def get_system_prompt(
     current_mode: str = "conversation",
+    style: str = "",
     extra_context: str = "",
     user_name: str = "boss",
 ) -> str:
@@ -87,6 +88,10 @@ def get_system_prompt(
         current_time=now.strftime("%I:%M %p"),
         current_mode=current_mode,
     )
+
+    style_modifier = get_style_modifier(style)
+    if style_modifier:
+        prompt += f"\n\n## RESPONSE STYLE\n{style_modifier}"
 
     if extra_context:
         prompt += f"\n\n## ADDITIONAL CONTEXT\n{extra_context}"
