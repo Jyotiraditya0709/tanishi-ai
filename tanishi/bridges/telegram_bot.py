@@ -33,11 +33,8 @@ async def run_telegram_bot():
     from tanishi.core import get_config
     from tanishi.core.brain import TanishiBrain
     from tanishi.memory.manager import MemoryManager
+    from tanishi.tools import register_all_tools
     from tanishi.tools.registry import ToolRegistry
-    from tanishi.tools.web_search import get_web_tools
-    from tanishi.tools.filesystem import get_filesystem_tools
-    from tanishi.tools.system_tools import get_system_tools
-    from tanishi.tools.self_improve import get_self_improve_tools
 
     config = get_config()
     token = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -55,14 +52,7 @@ async def run_telegram_bot():
 
     # Initialize brain
     registry = ToolRegistry()
-    for tool in get_web_tools():
-        registry.register(tool)
-    for tool in get_filesystem_tools():
-        registry.register(tool)
-    for tool in get_system_tools():
-        registry.register(tool)
-    for tool in get_self_improve_tools():
-        registry.register(tool)
+    register_all_tools(None, registry)
 
     brain = TanishiBrain(tool_registry=registry)
     memory = MemoryManager(config.db_path)
