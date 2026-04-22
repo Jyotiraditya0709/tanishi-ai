@@ -428,10 +428,22 @@ def get_browser_tools() -> list[ToolDefinition]:
             input_schema={
                 "type": "object",
                 "properties": {
-                    "selector": {"type": "string", "description": "CSS selector of element to click", "default": ""},
-                    "text": {"type": "string", "description": "Visible text of element to click (easier than selector)", "default": ""},
+                    "selector": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "CSS selector of element to click",
+                    },
+                    "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Visible text of element to click (easier than selector)",
+                    },
                 },
                 "required": [],
+                "anyOf": [
+                    {"required": ["selector"]},
+                    {"required": ["text"]},
+                ],
             },
             handler=click_element,
             category="browser",
