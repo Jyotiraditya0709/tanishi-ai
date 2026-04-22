@@ -166,7 +166,13 @@ def get_system_tools() -> list[ToolDefinition]:
             description="Get the current date, time, day of week, week number, and timestamp.",
             input_schema={
                 "type": "object",
-                "properties": {},
+                "properties": {
+                    "timezone": {
+                        "type": "string",
+                        "description": "Timezone hint (currently informational; defaults to local).",
+                        "default": "local",
+                    },
+                },
                 "required": [],
             },
             handler=get_datetime,

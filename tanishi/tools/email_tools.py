@@ -184,6 +184,7 @@ def get_email_tools() -> list[ToolDefinition]:
                 "type": "object",
                 "properties": {
                     "count": {"type": "integer", "description": "Number of emails to read.", "default": 5},
+                    "folder": {"type": "string", "description": "Mailbox folder to read (e.g., INBOX, [Gmail]/Sent Mail).", "default": "INBOX"},
                     "unread_only": {"type": "boolean", "description": "Only show unread emails.", "default": True},
                 },
                 "required": [],
