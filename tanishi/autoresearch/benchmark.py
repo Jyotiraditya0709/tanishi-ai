@@ -67,6 +67,7 @@ class TaskResult:
     latency_ms: float
     error: str = None
     response_text: str = ""
+    tool_usage: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -143,7 +144,7 @@ async def _run_task_async(task, brain):
     try:
         response = await asyncio.wait_for(brain.think(task.prompt), timeout=task.timeout_s)
         text = response.content if hasattr(response, "content") else str(response)
-        tools_used = getattr(response, "tools_used", None)
+        tools_used = list(getattr(response, "tools_used", []) or [])
         if task.expected_tool:
             if tools_used is None:
                 print(
@@ -157,8 +158,15 @@ async def _run_task_async(task, brain):
                 )
         latency = (time.time() - t0) * 1000
         quality = judge_response(task, text)
-        return TaskResult(task.name, task.category, True, quality, latency,
-                          response_text=(text or "")[:500])
+        return TaskResult(
+            task.name,
+            task.category,
+            True,
+            quality,
+            latency,
+            response_text=(text or "")[:500],
+            tool_usage=tools_used,
+        )
     except asyncio.TimeoutError:
         return TaskResult(task.name, task.category, False, 0.0,
                           task.timeout_s * 1000, error="timeout")
