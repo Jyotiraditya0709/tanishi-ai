@@ -33,11 +33,9 @@ from tanishi.core import get_config
 from tanishi.core.brain import TanishiBrain
 from tanishi.memory.manager import MemoryManager, MemoryEntry
 from tanishi.memory.trust import TrustManager, TrustLevel, Contact, Secret
+from tanishi.tools import register_all_tools
+from tanishi.tools.self_improve import SelfImproveEngine
 from tanishi.tools.registry import ToolRegistry
-from tanishi.tools.web_search import get_web_tools
-from tanishi.tools.filesystem import get_filesystem_tools
-from tanishi.tools.system_tools import get_system_tools
-from tanishi.tools.self_improve import get_self_improve_tools, SelfImproveEngine
 
 
 console = Console()
@@ -172,7 +170,7 @@ class TanishiCLI:
 
         # Initialize tool registry
         self.tool_registry = ToolRegistry()
-        self._register_all_tools()
+        register_all_tools(self, self.tool_registry)
 
         # Set up approval callback
         self.tool_registry.set_approval_callback(self._approve_tool)
@@ -198,74 +196,6 @@ class TanishiCLI:
             auto_suggest=AutoSuggestFromHistory(),
             style=TANISHI_STYLE,
         )
-
-    def _register_all_tools(self):
-        """Register all available tools."""
-        for tool in get_web_tools():
-            self.tool_registry.register(tool)
-        for tool in get_filesystem_tools():
-            self.tool_registry.register(tool)
-        for tool in get_system_tools():
-            self.tool_registry.register(tool)
-        for tool in get_self_improve_tools():
-            self.tool_registry.register(tool)
-        # Screenshot (optional — needs Pillow)
-        try:
-            from tanishi.tools.screenshot import get_screenshot_tools
-            for tool in get_screenshot_tools():
-                self.tool_registry.register(tool)
-        except ImportError:
-            pass
-        # Email tools
-        try:
-            from tanishi.tools.email_tools import get_email_tools
-            for tool in get_email_tools():
-                self.tool_registry.register(tool)
-        except ImportError:
-            pass
-        # Windows automation
-        try:
-            from tanishi.tools.windows_auto import get_windows_tools
-            for tool in get_windows_tools():
-                self.tool_registry.register(tool)
-        except ImportError:
-            pass
-        # Browser agent (needs playwright)
-        try:
-            from tanishi.tools.browser_agent import get_browser_tools
-            for tool in get_browser_tools():
-                self.tool_registry.register(tool)
-        except ImportError:
-            pass
-        # Finance tools
-        try:
-            from tanishi.tools.finance import get_finance_tools
-            for tool in get_finance_tools():
-                self.tool_registry.register(tool)
-        except ImportError:
-            pass
-        # Multi-agent
-        try:
-            from tanishi.tools.multi_agent import get_multi_agent_tools
-            for tool in get_multi_agent_tools():
-                self.tool_registry.register(tool)
-        except ImportError:
-            pass
-        # Autonomous learning
-        try:
-            from tanishi.tools.autonomous_learn import get_learning_tools
-            for tool in get_learning_tools():
-                self.tool_registry.register(tool)
-        except ImportError:
-            pass
-        # MCP Client — connects to external MCP servers for 2000+ integrations
-        try:
-            from tanishi.tools.mcp_client import get_mcp_tools, init_mcp_manager
-            self.mcp_manager = init_mcp_manager(self.tool_registry)
-            for tool in get_mcp_tools():
-                self.tool_registry.register(tool)
-        except ImportError:
-            self.mcp_manager = None
 
     def _approve_tool(self, tool_name: str, tool_input: dict) -> bool:
         """Ask user to approve a high-risk tool execution."""
