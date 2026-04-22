@@ -59,7 +59,6 @@ KEEP_THRESHOLD = 0.001  # composite score must improve by at least this much
 # Areas Tanishi can experiment with
 EXPERIMENT_AREAS = [
     "system_prompt",     # Tanishi's personality/behavior prompt
-    "tool_descriptions", # how tools are described to the model
     "routing_logic",     # when to use Claude vs Ollama vs GPT
     "memory_retrieval",  # similarity thresholds, top-k for memory recall
     "voice_params",      # filler timing, chunk sizes, TTS settings
