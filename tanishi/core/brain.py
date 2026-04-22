@@ -195,6 +195,7 @@ class TanishiBrain:
         model = self._select_model(user_input)
         system_prompt = get_system_prompt(
             current_mode=mood,
+            style=style,
             extra_context=extra_context,
         )
         messages = self._build_messages(user_input)
