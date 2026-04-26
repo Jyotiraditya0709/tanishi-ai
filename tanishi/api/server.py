@@ -11,6 +11,7 @@ Serves the web dashboard and provides API endpoints for:
 """
 
 import os
+import json
 import uuid
 import asyncio
 from datetime import datetime
@@ -24,6 +25,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from tanishi.core import get_config
+from tanishi.core.chat_context import chat_extra_context
 from tanishi.core.brain import TanishiBrain
 from tanishi.tools import register_all_tools
 from tanishi.tools.registry import ToolRegistry
@@ -114,11 +116,45 @@ class TaskToggle(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard():
-    """Serve the web dashboard."""
+    """Serve the configured dashboard."""
+    use_new_frontend = os.getenv("TANISHI_NEW_FRONTEND", "off").lower() in {"1", "true", "on", "yes"}
+    if use_new_frontend:
+        v2_index = Path(__file__).parent.parent / "dashboard_v2" / "index.html"
+        if v2_index.exists():
+            return FileResponse(v2_index)
     dashboard_path = Path(__file__).parent.parent / "dashboard" / "index.html"
     if dashboard_path.exists():
         return HTMLResponse(content=dashboard_path.read_text(encoding="utf-8"))
     return HTMLResponse(content="<h1>Tanishi</h1><p>Dashboard not found.</p>")
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_current():
+    return await dashboard()
+
+
+@app.get("/dashboard-legacy", response_class=HTMLResponse)
+async def dashboard_legacy():
+    dashboard_path = Path(__file__).parent.parent / "dashboard" / "index.html"
+    if dashboard_path.exists():
+        return HTMLResponse(content=dashboard_path.read_text(encoding="utf-8"))
+    return HTMLResponse(content="<h1>Tanishi</h1><p>Legacy dashboard not found.</p>")
+
+
+@app.get("/dashboard-v2")
+async def dashboard_v2():
+    v2_index = Path(__file__).parent.parent / "dashboard_v2" / "index.html"
+    if v2_index.exists():
+        return FileResponse(v2_index)
+    raise HTTPException(status_code=404, detail="Dashboard v2 is not built yet")
+
+
+@app.get("/assets/{asset_path:path}")
+async def dashboard_v2_assets(asset_path: str):
+    asset_file = Path(__file__).parent.parent / "dashboard_v2" / "assets" / asset_path
+    if asset_file.exists():
+        return FileResponse(asset_file)
+    raise HTTPException(status_code=404, detail="Asset not found")
 
 
 # ============================================================
@@ -156,7 +192,7 @@ async def chat(request: ChatRequest):
         raise HTTPException(status_code=503, detail="Brain not initialized")
 
     session_id = request.session_id or str(uuid.uuid4())
-    extra_context = memory.build_core_context() if memory else ""
+    extra_context = chat_extra_context(memory, brain.tool_registry)
 
     response = await brain.think(
         user_input=request.message,
@@ -189,9 +225,73 @@ async def websocket_chat(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_text()
-            async for chunk in brain.stream_think(data):
-                await websocket.send_text(chunk)
-            await websocket.send_text("[END]")
+            use_envelope = False
+            user_message = data
+            stripped = data.strip()
+            if stripped.startswith("{"):
+                try:
+                    obj = json.loads(data)
+                    if (
+                        isinstance(obj, dict)
+                        and obj.get("protocol") == "v2"
+                        and isinstance(obj.get("message"), str)
+                    ):
+                        use_envelope = True
+                        user_message = obj["message"]
+                except json.JSONDecodeError:
+                    pass
+
+            if not brain:
+                if use_envelope:
+                    await websocket.send_text(
+                        json.dumps(
+                            {
+                                "type": "error",
+                                "timestamp": datetime.now().isoformat(),
+                                "payload": {"detail": "Brain not initialized"},
+                            }
+                        )
+                    )
+                continue
+
+            if use_envelope:
+                ts0 = datetime.now().isoformat()
+                try:
+                    ws_ctx = chat_extra_context(memory, brain.tool_registry)
+                    async for chunk in brain.stream_think(user_message, extra_context=ws_ctx):
+                        await websocket.send_text(
+                            json.dumps(
+                                {
+                                    "type": "chat_token",
+                                    "timestamp": ts0,
+                                    "payload": {"text": chunk},
+                                }
+                            )
+                        )
+                    await websocket.send_text(
+                        json.dumps(
+                            {
+                                "type": "chat_done",
+                                "timestamp": datetime.now().isoformat(),
+                                "payload": {},
+                            }
+                        )
+                    )
+                except Exception as e:
+                    await websocket.send_text(
+                        json.dumps(
+                            {
+                                "type": "error",
+                                "timestamp": datetime.now().isoformat(),
+                                "payload": {"detail": str(e)},
+                            }
+                        )
+                    )
+            else:
+                ws_ctx = chat_extra_context(memory, brain.tool_registry)
+                async for chunk in brain.stream_think(data, extra_context=ws_ctx):
+                    await websocket.send_text(chunk)
+                await websocket.send_text("[END]")
     except WebSocketDisconnect:
         pass
 
