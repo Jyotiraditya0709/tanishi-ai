@@ -13,6 +13,8 @@ venv/
 
 # Tanishi data (personal - never commit)
 .tanishi/
+# Local dev server home (e.g. Cursor sandbox / isolated runs)
+data/tanishi-runtime/
 
 # IDE
 .vscode/
@@ -23,6 +25,11 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local / accidental artifacts (do not commit)
+C:/
+design/
+autoresearch_results/snapshots/
 
 # Logs
 *.log

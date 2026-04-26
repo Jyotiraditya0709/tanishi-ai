@@ -30,6 +30,7 @@ from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.styles import Style as PTStyle
 
 from tanishi.core import get_config
+from tanishi.core.chat_context import chat_extra_context
 from tanishi.core.brain import TanishiBrain
 from tanishi.memory.manager import MemoryManager, MemoryEntry
 from tanishi.memory.trust import TrustManager, TrustLevel, Contact, Secret
@@ -732,11 +733,6 @@ class TanishiCLI:
 
     async def chat(self, user_input: str):
         """Process a chat message with tool support."""
-        core_context = self.memory.build_core_context()
-
-        # Add tool awareness to context
-        tool_context = f"\n\nYou have {len(self.tool_registry.tools)} tools available. Use them proactively when they'd help answer the question — especially web_search for current information and scan_github_trending for finding new tools."
-
         self.memory.log_message(self.session_id, "user", user_input)
 
         console.print()
@@ -744,7 +740,7 @@ class TanishiCLI:
 
         response = await self.brain.think(
             user_input=user_input,
-            extra_context=core_context + tool_context,
+            extra_context=chat_extra_context(self.memory, self.tool_registry),
         )
 
         # Build subtitle

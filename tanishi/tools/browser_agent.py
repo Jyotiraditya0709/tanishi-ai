@@ -228,8 +228,12 @@ async def browser_search(query: str, engine: str = "google") -> str:
         return f"Browser search failed: {str(e)}"
 
 
-async def click_element(selector: str, text: str = "") -> str:
+async def click_element(selector: str = "", text: str = "") -> str:
     """Click an element on the current page by CSS selector or text content."""
+    selector = (selector or "").strip()
+    text = (text or "").strip()
+    if not selector and not text:
+        return "Error: Provide either 'selector' (CSS) or 'text' (visible label)."
     try:
         page = await BrowserManager.get_page()
 
@@ -424,26 +428,24 @@ def get_browser_tools() -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="click_element",
-            description="Click a button, link, or element on the current browser page. Use CSS selector or visible text. Examples: click_element(text='Add to Cart'), click_element(selector='#submit-btn')",
+            description=(
+                "Click a button, link, or element on the current browser page. "
+                "Provide exactly one of: selector (CSS) OR text (visible label). "
+                "Examples: {\"text\": \"Add to Cart\"}, {\"selector\": \"#submit-btn\"}"
+            ),
             input_schema={
                 "type": "object",
                 "properties": {
                     "selector": {
                         "type": "string",
-                        "minLength": 1,
-                        "description": "CSS selector of element to click",
+                        "description": "CSS selector of element to click (omit if using text)",
                     },
                     "text": {
                         "type": "string",
-                        "minLength": 1,
-                        "description": "Visible text of element to click (easier than selector)",
+                        "description": "Visible text of element to click (omit if using selector)",
                     },
                 },
                 "required": [],
-                "anyOf": [
-                    {"required": ["selector"]},
-                    {"required": ["text"]},
-                ],
             },
             handler=click_element,
             category="browser",

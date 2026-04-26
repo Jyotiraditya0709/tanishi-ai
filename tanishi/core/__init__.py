@@ -21,7 +21,7 @@ class TanishiConfig(BaseSettings):
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
     claude_model: str = Field(default="claude-sonnet-4-20250514", alias="CLAUDE_MODEL")
     ollama_base_url: str = Field(default="http://localhost:11434", alias="OLLAMA_BASE_URL")
-    ollama_model: str = Field(default="gemma4:e4b", alias="OLLAMA_MODEL")
+    ollama_model: str = Field(default="gemma3:4b", alias="OLLAMA_MODEL")
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
 
     # --- Paths (accept both DB_PATH and TANISHI_DB_PATH) ---
