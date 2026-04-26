@@ -21,6 +21,12 @@ import json
 import random
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
+
+from tanishi.autoresearch.reflections import (
+    REFLECTIONS_PATH,
+    load_failed_mutation_descriptions,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -301,7 +307,7 @@ We measure her on three dimensions: response quality, latency, and tool reliabil
 
 Recent experiments (most recent first):
 {history}
-
+{reflections_block}
 Current focus area: {area}
 
 Propose ONE specific, small change to try next. The change must be:
@@ -320,7 +326,9 @@ Available areas and what they mean:
 Respond with a single sentence describing what you want to try and why.
 Just the idea, no preamble."""
 
-def propose_via_llm(area: str, history_path: Path) -> dict | None:
+def propose_via_llm(
+    area: str, history_path: Path, reflections_context: str = "",
+) -> dict | None:
     """Ask Claude to propose a mutation. Falls back to None on error."""
     try:
         from anthropic import Anthropic
@@ -331,13 +339,20 @@ def propose_via_llm(area: str, history_path: Path) -> dict | None:
             f"(score={h.get('score', 0):.4f})"
             for h in reversed(history)
         ) or "  (no history yet)"
+        reflections_block = (
+            "\n" + reflections_context.strip() + "\n"
+            if reflections_context.strip()
+            else "\n"
+        )
 
         msg = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=200,
             messages=[{
                 "role": "user",
-                "content": LLM_PROPOSER_PROMPT.format(area=area, history=history_str),
+                "content": LLM_PROPOSER_PROMPT.format(
+                    area=area, history=history_str, reflections_block=reflections_block
+                ),
             }],
         )
         idea = msg.content[0].text.strip()
@@ -351,11 +366,19 @@ def propose_via_llm(area: str, history_path: Path) -> dict | None:
 # Public API
 # ---------------------------------------------------------------------------
 
-def propose_mutation(area: str, history_path: Path) -> dict:
+def propose_mutation(
+    area: str,
+    history_path: Path,
+    reflections_context: str = "",
+    reflections_path: Optional[Path] = None,
+) -> dict:
     """
     Pick a mutation for the given area.
     First ~20 experiments use rules (to build a dataset), then mostly LLM.
     """
+    refl_path = reflections_path if reflections_path is not None else REFLECTIONS_PATH
+    failed_mutations = load_failed_mutation_descriptions(20, path=refl_path)
+
     history = load_recent_history(history_path, n=100)
     n_done = len(history)
 
@@ -363,7 +386,7 @@ def propose_mutation(area: str, history_path: Path) -> dict:
     use_llm = n_done >= 20 and random.random() < 0.5
 
     if use_llm:
-        llm_mut = propose_via_llm(area, history_path)
+        llm_mut = propose_via_llm(area, history_path, reflections_context=reflections_context)
         if llm_mut is not None:
             # LLM proposes the IDEA but we still need a concrete diff.
             # For now, fall back to rule-based to actually edit files.
@@ -387,6 +410,11 @@ def propose_mutation(area: str, history_path: Path) -> dict:
             continue
         if mut is None:
             continue
+        if mut["description"] in failed_mutations:
+            print(
+                f"[mutator] skipping '{mut['description']}' — reflection says it failed before"
+            )
+            continue
         if mut["description"] in recent_descriptions:
             continue
         return mut
@@ -397,8 +425,14 @@ def propose_mutation(area: str, history_path: Path) -> dict:
             mut = rule_fn(project_root)
         except Exception:
             continue
-        if mut is not None:
-            return mut
+        if mut is None:
+            continue
+        if mut["description"] in failed_mutations:
+            print(
+                f"[mutator] skipping '{mut['description']}' — reflection says it failed before"
+            )
+            continue
+        return mut
 
     raise RuntimeError(f"no applicable mutations found for area '{area}'")
 
