@@ -81,8 +81,49 @@ def _parse_skill_json(raw: str) -> Optional[dict]:
         return None
 
 
+def _offline_skill_from_usage(
+    conversation_history: list[dict], tools_used: list[str]
+) -> dict:
+    """
+    Template skill when Ollama is unreachable or returns bad JSON (same idea as
+    autoresearch reflections template fallback).
+    """
+    distinct = list(dict.fromkeys(str(t) for t in tools_used if t))
+    if len(distinct) >= 2:
+        title = f"{distinct[0]} + {distinct[1]} workflow"
+    elif len(distinct) == 1:
+        title = f"{distinct[0]} workflow"
+    else:
+        title = "conversation workflow"
+
+    first_user = ""
+    for m in conversation_history:
+        if m.get("role") == "user" and m.get("content"):
+            c = m["content"]
+            first_user = c if isinstance(c, str) else str(c)
+            break
+    words = first_user.strip().split()[:5]
+    phrase = " ".join(words) if words else "user request"
+
+    trigger_patterns: list[str] = [phrase]
+    trigger_patterns.extend(distinct)
+    trigger_patterns = list(dict.fromkeys(p for p in trigger_patterns if p))
+
+    if distinct:
+        procedure = "\n".join(f"{i + 1}. Called {name}" for i, name in enumerate(distinct))
+    else:
+        procedure = "1. Assist the user based on the conversation."
+
+    return {
+        "title": title,
+        "trigger_patterns": trigger_patterns,
+        "procedure": procedure,
+        "tools_used": distinct,
+    }
+
+
 def extract_skill(conversation_history: list[dict], tools_used: list[str]) -> Optional[dict]:
-    """Ask Ollama for a skill JSON; return None on failure."""
+    """Ask Ollama for a skill JSON; fall back to a template doc if Ollama/JSON fails."""
     tail = conversation_history[-10:]
     conv_lines = []
     for m in tail[-5:]:
@@ -121,7 +162,7 @@ def extract_skill(conversation_history: list[dict], tools_used: list[str]) -> Op
         data = _parse_skill_json(raw2 or "")
 
     if data is None:
-        return None
+        data = _offline_skill_from_usage(conversation_history, tools_used)
 
     example_input = ""
     example_output = ""
