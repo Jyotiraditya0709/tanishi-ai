@@ -38,6 +38,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tanishi.autoresearch.benchmark import run_benchmark_suite, BenchmarkResult
 from tanishi.autoresearch.mutator import propose_mutation, apply_mutation, revert_mutation
 from tanishi.autoresearch.scorer import composite_score
+from tanishi.autoresearch.reflections import (
+    REFLECTIONS_PATH,
+    load_recent_reflections,
+    load_recent_reflection_count,
+    write_reflection,
+)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -181,8 +187,16 @@ def run_one_experiment(experiment_num: int, area: str, baseline: float) -> Exper
     # 1. Pick an area and propose a mutation
     chosen_area = area
     print(f"[experiment {experiment_num}] area={chosen_area}")
+    lessons = load_recent_reflections(20, path=REFLECTIONS_PATH)
+    n_lessons = load_recent_reflection_count(20, path=REFLECTIONS_PATH)
+    print(f"[reflection] loaded {n_lessons} past lessons")
     try:
-        mutation = propose_mutation(chosen_area, history_path=EXPERIMENTS_LOG)
+        mutation = propose_mutation(
+            chosen_area,
+            history_path=EXPERIMENTS_LOG,
+            reflections_context=lessons,
+            reflections_path=REFLECTIONS_PATH,
+        )
         print(f"[experiment {experiment_num}] proposed: {mutation['description']}")
     except Exception as e:
         msg = str(e)
@@ -243,6 +257,16 @@ def run_one_experiment(experiment_num: int, area: str, baseline: float) -> Exper
     if not keep:
         restore_snapshot(snap)
         print(f"[experiment {experiment_num}] reverted to snapshot")
+        write_reflection(
+            experiment_id=experiment_id,
+            area=chosen_area,
+            mutation=mutation["description"],
+            score=score,
+            baseline=baseline,
+            task_results=bench.task_results,
+            path=REFLECTIONS_PATH,
+        )
+        print(f"[reflection] wrote lesson for exp {experiment_id}")
 
     return ExperimentResult(
         experiment_id=experiment_id,
