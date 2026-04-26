@@ -11,6 +11,7 @@ This loop continues until Claude has a final text response.
 import asyncio
 import json
 import re
+import threading
 import warnings
 import httpx
 import anthropic
@@ -200,10 +201,28 @@ class TanishiBrain:
         3. Repeat until Claude returns a text response
         """
         model = self._select_model(user_input)
+
+        skill_block = ""
+        try:
+            from tanishi.skills.skill_store import find_matching_skills, format_skills_for_context
+
+            matches = find_matching_skills(user_input, top_k=3)
+            if matches:
+                skill_block = format_skills_for_context(matches)
+                print(f"[skills] found {len(matches)} matching skill(s) for this query")
+        except Exception:
+            pass
+
+        merged_extra = extra_context.strip()
+        if skill_block:
+            merged_extra = (
+                (merged_extra + "\n\n" + skill_block).strip() if merged_extra else skill_block
+            )
+
         system_prompt = get_system_prompt(
             current_mode=mood,
             style=style,
-            extra_context=extra_context,
+            extra_context=merged_extra,
         )
         messages = self._build_messages(user_input)
 
@@ -216,7 +235,41 @@ class TanishiBrain:
 
         self.conversation_history.append(Message(role="user", content=user_input))
         self.conversation_history.append(Message(role="assistant", content=response.content))
+
+        if self._response_ok_for_skill_learning(response):
+            self._schedule_skill_extraction(response)
+
         return response
+
+    @staticmethod
+    def _response_ok_for_skill_learning(response: BrainResponse) -> bool:
+        text = (response.content or "").strip()
+        if not text:
+            return False
+        mu = response.model_used or ""
+        if mu.startswith("claude (error)") or mu.startswith("ollama (error)"):
+            return False
+        return True
+
+    def _schedule_skill_extraction(self, response: BrainResponse) -> None:
+        hist_snapshot = [{"role": m.role, "content": m.content} for m in self.conversation_history]
+        tools_used = list(response.tools_used or [])
+
+        def run() -> None:
+            try:
+                from tanishi.skills.skill_extractor import extract_skill, should_extract_skill
+                from tanishi.skills.skill_store import save_skill
+
+                if not should_extract_skill(hist_snapshot, tools_used):
+                    return
+                extracted = extract_skill(hist_snapshot, tools_used)
+                if extracted:
+                    save_skill(extracted)
+                    print(f"[skills] extracted new skill: '{extracted.get('title', '')}'")
+            except Exception:
+                pass
+
+        threading.Thread(target=run, daemon=True).start()
 
     async def _think_claude_with_tools(
         self, system_prompt: str, messages: list[dict], user_input: str
