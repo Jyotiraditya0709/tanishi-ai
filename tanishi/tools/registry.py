@@ -108,10 +108,14 @@ class ToolRegistry:
         try:
             result = await tool.handler(**tool_input)
             elapsed = (time.time() - start) * 1000
+            if isinstance(result, (dict, list)):
+                normalized = json.dumps(result, ensure_ascii=False)
+            else:
+                normalized = str(result) if not isinstance(result, str) else result
 
             return ToolResult(
                 success=True,
-                output=str(result) if not isinstance(result, str) else result,
+                output=normalized,
                 tool_name=tool_name,
                 execution_time_ms=elapsed,
             )

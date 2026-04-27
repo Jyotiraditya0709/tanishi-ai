@@ -28,6 +28,7 @@ def register_all_tools(brain, registry: ToolRegistry) -> dict[str, Any]:
     from tanishi.tools.filesystem import get_filesystem_tools
     from tanishi.tools.system_tools import get_system_tools
     from tanishi.tools.self_improve import get_self_improve_tools
+    from tanishi.tools.canvas_tools import get_canvas_tools
 
     loaded_packs: list[str] = []
     missing_packs: list[str] = []
@@ -37,7 +38,8 @@ def register_all_tools(brain, registry: ToolRegistry) -> dict[str, Any]:
     _register_tool_pack(registry, get_filesystem_tools())
     _register_tool_pack(registry, get_system_tools())
     _register_tool_pack(registry, get_self_improve_tools())
-    loaded_packs.extend(["web_search", "filesystem", "system_tools", "self_improve"])
+    _register_tool_pack(registry, get_canvas_tools())
+    loaded_packs.extend(["web_search", "filesystem", "system_tools", "self_improve", "canvas_tools"])
 
     optional_packs = [
         ("screenshot", "tanishi.tools.screenshot", "get_screenshot_tools"),

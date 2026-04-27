@@ -41,6 +41,7 @@ class BrainResponse:
     tokens_out: int = 0
     cached: bool = False
     tools_used: list[str] = field(default_factory=list)
+    canvas_frames: list[dict] = field(default_factory=list)
 
 
 CANVAS_BLOCK_RE = re.compile(
@@ -304,6 +305,7 @@ class TanishiBrain:
         total_in = 0
         total_out = 0
         tools_used = []
+        canvas_frames: list[dict] = []
         claude_model = self._claude_model_for_input(user_input)
 
         try:
@@ -345,10 +347,25 @@ class TanishiBrain:
                                     {"success": result.success, "ms": result.execution_time_ms}
                                 )
 
+                            tool_result_content = result.output if result.success else f"Error: {result.error}"
+                            if result.success and tool_name == "emit_canvas":
+                                try:
+                                    canvas_obj = json.loads(result.output)
+                                    if (
+                                        isinstance(canvas_obj, dict)
+                                        and canvas_obj.get("type") == "canvas"
+                                        and canvas_obj.get("kind") in {"mermaid", "chart", "html"}
+                                        and isinstance(canvas_obj.get("payload"), str)
+                                    ):
+                                        canvas_frames.append(canvas_obj)
+                                        tool_result_content = "Canvas emitted."
+                                except Exception:
+                                    pass
+
                             tool_results.append({
                                 "type": "tool_result",
                                 "tool_use_id": tool_use_id,
-                                "content": result.output if result.success else f"Error: {result.error}",
+                                "content": tool_result_content,
                             })
 
                     messages.append({"role": "assistant", "content": assistant_content})
@@ -369,6 +386,7 @@ class TanishiBrain:
                         tokens_in=total_in,
                         tokens_out=total_out,
                         tools_used=tools_used,
+                        canvas_frames=canvas_frames,
                     )
 
             return BrainResponse(
@@ -377,6 +395,7 @@ class TanishiBrain:
                 tokens_in=total_in,
                 tokens_out=total_out,
                 tools_used=tools_used,
+                canvas_frames=canvas_frames,
             )
 
         except anthropic.APIError as e:
@@ -410,14 +429,17 @@ class TanishiBrain:
                 model_used="ollama (error)",
             )
 
-    async def stream_think(self, user_input: str, mood: str = "casual", extra_context: str = "") -> AsyncGenerator[str, None]:
+    async def stream_think(
+        self, user_input: str, mood: str = "casual", extra_context: str = ""
+    ) -> AsyncGenerator[dict, None]:
         response = await self.think(user_input, mood=mood, extra_context=extra_context)
         clean_text, canvases = self._extract_canvas_blocks(response.content or "")
+        all_canvases = list(response.canvas_frames or []) + canvases
         if clean_text:
             chunk_size = 500
             for i in range(0, len(clean_text), chunk_size):
                 yield {"type": "chunk", "text": clean_text[i : i + chunk_size]}
-        for canvas in canvases:
+        for canvas in all_canvases:
             yield canvas
         yield {"type": "end"}
 
