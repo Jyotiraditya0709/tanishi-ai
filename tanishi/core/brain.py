@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from tanishi.config import routing as routing_cfg
 from tanishi.core import get_config
 from tanishi.core.personality import get_system_prompt
+from tanishi.memory.manager import MemoryManager
 from tanishi.tools.registry import ToolRegistry, ToolResult
 
 
@@ -75,6 +76,10 @@ class TanishiBrain:
 
     def __init__(self, tool_registry: Optional[ToolRegistry] = None):
         self.config = get_config()
+        try:
+            self.memory_manager = MemoryManager(self.config.db_path)
+        except Exception:
+            self.memory_manager = None
         self.conversation_history: list[Message] = []
         self.claude_client = None
         self.ollama_available = False
@@ -218,6 +223,20 @@ class TanishiBrain:
             merged_extra = (
                 (merged_extra + "\n\n" + skill_block).strip() if merged_extra else skill_block
             )
+
+        try:
+            from tanishi.memory.dream import DreamCycle
+
+            dream = DreamCycle(self.memory_manager, self.config)
+            dream_ctx = dream.get_dream_context(max_tokens=500)
+            if dream_ctx:
+                n_mem = sum(1 for ln in dream_ctx.splitlines() if ln.strip().startswith("- "))
+                print(f"[dream] injected {n_mem} memories into context")
+                merged_extra = (
+                    (dream_ctx + "\n\n" + merged_extra).strip() if merged_extra else dream_ctx
+                )
+        except Exception:
+            pass
 
         system_prompt = get_system_prompt(
             current_mode=mood,
