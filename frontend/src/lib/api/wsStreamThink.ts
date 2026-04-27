@@ -1,18 +1,22 @@
 import { wsClientV2HandshakeSchema } from "./contracts";
 import { getWsUrl } from "./apiBase";
-import { errorDetailFromEnvelope, parseWsInbound, textFromChatTokenEnvelope } from "./wsParse";
+import { parseWsInbound } from "./wsParse";
+
+type CanvasFrame = { kind: "mermaid" | "chart" | "html"; payload: string };
+export type WsThinkResult = { text: string; canvases: CanvasFrame[] };
 
 /**
  * Stream a completion over `/ws` using protocol v2 (JSON envelopes).
  * Falls back is not used here — plain-legacy clients should keep using REST `/chat`.
  */
-export function streamThinkOverWs(userMessage: string): Promise<string> {
-  const handshake = wsClientV2HandshakeSchema.parse({ protocol: "v2", message: userMessage });
+export function streamThinkOverWs(userMessage: string): Promise<WsThinkResult> {
+  const handshake = wsClientV2HandshakeSchema.parse({ message: userMessage });
   const payload = JSON.stringify(handshake);
 
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(getWsUrl());
     let assembled = "";
+    const canvases: CanvasFrame[] = [];
     let settled = false;
 
     const finish = (fn: () => void) => {
@@ -29,7 +33,7 @@ export function streamThinkOverWs(userMessage: string): Promise<string> {
     ws.onclose = () => {
       if (settled) return;
       if (assembled.length > 0) {
-        finish(() => resolve(assembled));
+        finish(() => resolve({ text: assembled, canvases }));
       } else {
         finish(() => reject(new Error("WebSocket closed before completion")));
       }
@@ -41,29 +45,24 @@ export function streamThinkOverWs(userMessage: string): Promise<string> {
 
     ws.onmessage = (event) => {
       const parsed = parseWsInbound(String(event.data));
-      if (parsed.kind === "legacy_token") {
-        assembled += parsed.text;
+      if (parsed.kind === "invalid") {
+        finish(() => reject(new Error("Invalid WebSocket frame")));
         return;
       }
-      if (parsed.kind === "legacy_end") {
-        finish(() => resolve(assembled));
-        return;
-      }
-      const { envelope } = parsed;
-      switch (envelope.type) {
-        case "chat_token": {
-          const chunk = textFromChatTokenEnvelope(envelope);
-          if (chunk) assembled += chunk;
+      const { frame } = parsed;
+      switch (frame.type) {
+        case "chunk":
+          assembled += frame.text;
           break;
-        }
-        case "chat_done":
-          finish(() => resolve(assembled));
+        case "canvas":
+          canvases.push({ kind: frame.kind, payload: frame.payload });
           break;
-        case "error": {
-          const detail = errorDetailFromEnvelope(envelope) ?? "Unknown error";
-          finish(() => reject(new Error(detail)));
+        case "end":
+          finish(() => resolve({ text: assembled, canvases }));
           break;
-        }
+        case "error":
+          finish(() => reject(new Error(frame.detail || "Unknown error")));
+          break;
         default:
           break;
       }

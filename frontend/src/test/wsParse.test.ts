@@ -1,36 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { errorDetailFromEnvelope, parseWsInbound, textFromChatTokenEnvelope } from "../lib/api/wsParse";
+import { parseWsInbound } from "../lib/api/wsParse";
 
 describe("parseWsInbound", () => {
-  it("detects legacy end marker", () => {
-    expect(parseWsInbound("[END]")).toEqual({ kind: "legacy_end" });
-  });
-
-  it("parses JSON envelope", () => {
+  it("parses JSON chunk frame", () => {
     const raw = JSON.stringify({
-      type: "chat_token",
-      timestamp: "2026-01-01T00:00:00",
-      payload: { text: "hi" },
+      type: "chunk",
+      text: "hi",
     });
     const r = parseWsInbound(raw);
-    expect(r.kind).toBe("envelope");
-    if (r.kind === "envelope") {
-      expect(r.envelope.type).toBe("chat_token");
-      expect(textFromChatTokenEnvelope(r.envelope)).toBe("hi");
+    expect(r.kind).toBe("frame");
+    if (r.kind === "frame") {
+      expect(r.frame.type).toBe("chunk");
+      if (r.frame.type === "chunk") {
+        expect(r.frame.text).toBe("hi");
+      }
     }
   });
 
-  it("treats invalid JSON object as legacy token", () => {
+  it("marks invalid payload as invalid", () => {
     const r = parseWsInbound("{not json");
-    expect(r).toEqual({ kind: "legacy_token", text: "{not json" });
+    expect(r).toEqual({ kind: "invalid", raw: "{not json" });
   });
 
-  it("extracts error detail", () => {
-    const env = {
-      type: "error" as const,
-      timestamp: "t",
-      payload: { detail: "boom" },
-    };
-    expect(errorDetailFromEnvelope(env)).toBe("boom");
+  it("parses canvas and end frames", () => {
+    const c = parseWsInbound(JSON.stringify({ type: "canvas", kind: "mermaid", payload: "graph TD;A-->B" }));
+    expect(c.kind).toBe("frame");
+    const e = parseWsInbound(JSON.stringify({ type: "end" }));
+    expect(e.kind).toBe("frame");
   });
 });

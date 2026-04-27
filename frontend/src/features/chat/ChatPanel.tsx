@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { isSpeechRecognitionSupported, startDictation } from "../../lib/voice/browserListen";
 import { getSpeechEnabled, setSpeechEnabled } from "../../lib/voice/browserSpeak";
 import { useAppStore } from "../state/store";
+import { CanvasView } from "./CanvasView";
 
 export function ChatPanel() {
   const chat = useAppStore((s) => s.chat);
@@ -113,6 +114,14 @@ export function ChatPanel() {
           <div key={message.id} className={`msg ${message.role === "assistant" ? "t" : "u"}`}>
             <div className="who">{message.role === "assistant" ? "Tanishi" : "Boss"}</div>
             <div className="bub">{message.pending ? <span className="ghost" /> : message.text}</div>
+            {message.canvases?.length
+              ? message.canvases.map((canvas, idx) => (
+                  <CanvasView
+                    key={`${message.id}-canvas-${idx}`}
+                    canvas={{ kind: canvas.kind, payload: canvas.payload }}
+                  />
+                ))
+              : null}
           </div>
         ))}
       </div>

@@ -43,6 +43,12 @@ class BrainResponse:
     tools_used: list[str] = field(default_factory=list)
 
 
+CANVAS_BLOCK_RE = re.compile(
+    r'<canvas\s+kind="(mermaid|chart|html)"\s*>([\s\S]*?)</canvas>',
+    re.IGNORECASE,
+)
+
+
 SENSITIVE_KEYWORDS = [
     "password", "secret", "private", "girlfriend", "boyfriend",
     "salary", "bank", "medical", "health", "ssn", "credit card",
@@ -406,7 +412,28 @@ class TanishiBrain:
 
     async def stream_think(self, user_input: str, mood: str = "casual", extra_context: str = "") -> AsyncGenerator[str, None]:
         response = await self.think(user_input, mood=mood, extra_context=extra_context)
-        yield response.content
+        clean_text, canvases = self._extract_canvas_blocks(response.content or "")
+        if clean_text:
+            chunk_size = 500
+            for i in range(0, len(clean_text), chunk_size):
+                yield {"type": "chunk", "text": clean_text[i : i + chunk_size]}
+        for canvas in canvases:
+            yield canvas
+        yield {"type": "end"}
+
+    @staticmethod
+    def _extract_canvas_blocks(text: str) -> tuple[str, list[dict]]:
+        canvases: list[dict] = []
+        cleaned = text
+        for match in CANVAS_BLOCK_RE.finditer(text or ""):
+            kind = (match.group(1) or "").strip().lower()
+            payload = (match.group(2) or "").strip()
+            if kind and payload:
+                canvases.append({"type": "canvas", "kind": kind, "payload": payload})
+        cleaned = CANVAS_BLOCK_RE.sub("", cleaned)
+        # Collapse extra blank lines after removing canvas tags.
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+        return cleaned, canvases
 
     def clear_history(self):
         self.conversation_history.clear()

@@ -196,7 +196,31 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       if (isWsChatTransport()) {
         const reply = await streamThinkOverWs(trimmed);
-        applyAssistantSuccess(reply, set);
+        set((s) => {
+          const messages = s.chat.messages.filter((m) => !m.pending);
+          return {
+            chat: {
+              ...s.chat,
+              messages: [
+                ...messages,
+                msg("assistant", reply.text, {
+                  stateTag: "speaking",
+                  canvases: reply.canvases,
+                }),
+              ],
+              isThinking: false,
+              streamingState: "speaking",
+            },
+            avatar: { ...s.avatar, emotionState: "speaking", targetState: "speaking", speakingLevel: 0.8 },
+          };
+        });
+        window.setTimeout(() => {
+          set((s) => ({
+            chat: { ...s.chat, streamingState: "idle" },
+            avatar: { ...s.avatar, emotionState: "calm", targetState: "calm", speakingLevel: 0 },
+          }));
+        }, 1300);
+        queueMicrotask(() => speakAssistantReply(reply.text));
       } else {
         const response = await apiClient.sendChat({ message: trimmed });
         applyAssistantSuccess(response.response, set);
