@@ -1,0 +1,29 @@
+{
+  "system_prompt": [
+    "mut_prompt_more_concise",
+    "mut_prompt_tool_first"
+  ],
+  "personality": [
+    "mut_prompt_personality_warmer"
+  ],
+  "routing_logic": [
+    "mut_routing_prefer_haiku",
+    "mut_routing_local_first"
+  ],
+  "memory_retrieval": [
+    "mut_memory_lower_threshold",
+    "mut_memory_increase_topk"
+  ],
+  "tool_params": [
+    "mut_tools_shorter_timeout",
+    "mut_tools_more_retries"
+  ],
+  "voice_params": [
+    "mut_voice_smaller_chunks"
+  ],
+  "benchmark_tasks": [],
+  "mutation_rules": [
+    "mut_meta_add_rule_entry"
+  ],
+  "scoring_weights": []
+}

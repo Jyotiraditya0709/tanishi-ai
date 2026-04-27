@@ -21,7 +21,7 @@ import json
 import random
 from pathlib import Path
 from datetime import datetime
-from typing import Optional
+from typing import Callable, Optional
 
 from tanishi.autoresearch.reflections import (
     REFLECTIONS_PATH,
@@ -38,6 +38,43 @@ from tanishi.autoresearch.reflections import (
 
 def _read(path: Path) -> str | None:
     return path.read_text(encoding="utf-8") if path.exists() else None
+
+
+def _ollama_chat_once(prompt: str) -> str | None:
+    try:
+        import requests
+
+        base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
+        model = os.getenv("OLLAMA_MODEL", "gemma4:e4b")
+        r = requests.post(
+            f"{base}/api/chat",
+            json={
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False,
+            },
+            timeout=90,
+        )
+        if r.status_code != 200:
+            return None
+        txt = r.json().get("message", {}).get("content", "")
+        return txt.strip() if txt else None
+    except Exception:
+        return None
+
+
+def _parse_json_block(raw: str) -> dict | list | None:
+    text = (raw or "").strip()
+    if not text:
+        return None
+    if text.startswith("```"):
+        m = re.search(r"```(?:json)?\s*([\s\S]*?)```", text, re.IGNORECASE)
+        if m:
+            text = m.group(1).strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return None
 
 
 # --- system_prompt mutations ---
@@ -267,15 +304,177 @@ def mut_tool_desc_clearer(root: Path):
     }
 
 
-# Registry of mutation functions per area
-MUTATION_LIBRARY = {
-    "system_prompt": [mut_prompt_more_concise, mut_prompt_tool_first],
-    "personality": [mut_prompt_personality_warmer],
-    "routing_logic": [mut_routing_prefer_haiku, mut_routing_local_first],
-    "memory_retrieval": [mut_memory_lower_threshold, mut_memory_increase_topk],
-    "tool_params": [mut_tools_shorter_timeout, mut_tools_more_retries],
-    "voice_params": [mut_voice_smaller_chunks],
+def _build_dynamic_rule_fn(rule_obj: dict) -> Callable:
+    """
+    Build a mutation callable from a JSON config object.
+    Current supported type: text_replace
+    """
+    rtype = str(rule_obj.get("type", "text_replace"))
+    description = str(rule_obj.get("description", "dynamic rule")).strip()
+    target_file = str(rule_obj.get("target_file", "")).strip()
+    search = str(rule_obj.get("search", ""))
+    replace = str(rule_obj.get("replace", ""))
+
+    def _fn(root: Path):
+        if rtype != "text_replace":
+            return None
+        if not target_file or target_file.endswith("autoresearch.py"):
+            return None
+        f = root / target_file
+        text = _read(f)
+        if text is None:
+            return None
+        if not search or search not in text:
+            return None
+        new = text.replace(search, replace, 1)
+        if new == text:
+            return None
+        return {
+            "description": description,
+            "file": str(f),
+            "old": text,
+            "new": new,
+        }
+
+    _fn.__name__ = f"dyn_{re.sub(r'[^a-z0-9_]+', '_', description.lower())[:40]}"
+    return _fn
+
+
+def mut_meta_add_rule_entry(root: Path, reflections_context: str = ""):
+    """
+    Meta-mutation: propose one new mutation rule and append it to mutation_rules.json.
+    """
+    cfg_path = MUTATION_RULES_PATH
+    raw = _read(cfg_path)
+    if not raw:
+        return None
+    parsed = _parse_json_block(raw)
+    if not isinstance(parsed, dict):
+        return None
+
+    prompt = (
+        "Given these existing mutation rules and these lessons from failed experiments, "
+        "propose ONE new mutation rule that could improve performance.\n\n"
+        f"Current rules json:\n{json.dumps(parsed, ensure_ascii=False)[:12000]}\n\n"
+        f"Lessons:\n{(reflections_context or '(none)')[:4000]}\n\n"
+        "Output JSON only:\n"
+        "{\n"
+        '  "area": "system_prompt|routing_logic|memory_retrieval|tool_params|voice_params|personality",\n'
+        '  "description": "short mutation description",\n'
+        '  "config_change": {\n'
+        '    "type": "text_replace",\n'
+        '    "target_file": "repo-relative path",\n'
+        '    "search": "exact old substring",\n'
+        '    "replace": "new substring"\n'
+        "  }\n"
+        "}"
+    )
+    model_out = _ollama_chat_once(prompt)
+    obj = _parse_json_block(model_out or "")
+    if not isinstance(obj, dict):
+        return None
+
+    area = str(obj.get("area", "")).strip()
+    desc = str(obj.get("description", "")).strip()
+    change = obj.get("config_change")
+    if not area or area == "mutation_rules":
+        return None
+    if area not in parsed or not isinstance(parsed.get(area), list):
+        return None
+    if not desc or not isinstance(change, dict):
+        return None
+    if str(change.get("type", "")) != "text_replace":
+        return None
+    tfile = str(change.get("target_file", ""))
+    if (not tfile) or tfile.endswith("autoresearch.py"):
+        return None
+    if not str(change.get("search", "")).strip():
+        return None
+
+    # Ensure deterministic description for reflection skip matching.
+    meta_desc = f"mutation_rules: add dynamic rule for {area} — {desc}"
+    dynamic_entry = {
+        "type": "text_replace",
+        "description": meta_desc,
+        "target_file": tfile,
+        "search": str(change.get("search", "")),
+        "replace": str(change.get("replace", "")),
     }
+    parsed[area].append(dynamic_entry)
+    new_text = json.dumps(parsed, ensure_ascii=False, indent=2) + "\n"
+    return {
+        "description": meta_desc,
+        "file": str(cfg_path),
+        "old": raw,
+        "new": new_text,
+    }
+
+
+MUTATION_RULES_PATH = Path(__file__).resolve().parent / "mutation_rules.json"
+
+# Canonical function registry (json references these names)
+RULE_FUNCTIONS: dict[str, Callable] = {
+    "mut_prompt_more_concise": mut_prompt_more_concise,
+    "mut_prompt_tool_first": mut_prompt_tool_first,
+    "mut_prompt_personality_warmer": mut_prompt_personality_warmer,
+    "mut_routing_prefer_haiku": mut_routing_prefer_haiku,
+    "mut_routing_local_first": mut_routing_local_first,
+    "mut_memory_lower_threshold": mut_memory_lower_threshold,
+    "mut_memory_increase_topk": mut_memory_increase_topk,
+    "mut_tools_shorter_timeout": mut_tools_shorter_timeout,
+    "mut_tools_more_retries": mut_tools_more_retries,
+    "mut_voice_smaller_chunks": mut_voice_smaller_chunks,
+    "mut_tool_desc_clearer": mut_tool_desc_clearer,
+    "mut_meta_add_rule_entry": mut_meta_add_rule_entry,
+}
+
+
+def load_mutation_library(
+    rules_path: Path = MUTATION_RULES_PATH,
+    reflections_context: str = "",
+) -> dict[str, list[Callable]]:
+    """
+    Load mutation areas from mutation_rules.json and resolve to callables.
+    Unknown function names are skipped with a warning.
+    """
+    if not rules_path.exists():
+        raise RuntimeError(f"mutation rules config not found at {rules_path}")
+
+    try:
+        raw = json.loads(rules_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"invalid mutation rules json: {e}") from e
+
+    if not isinstance(raw, dict):
+        raise RuntimeError("mutation rules json must be an object: {area: [rule_fn_name]}")
+
+    library: dict[str, list[Callable]] = {}
+    for area, names in raw.items():
+        if not isinstance(area, str):
+            continue
+        if not isinstance(names, list):
+            print(f"[mutator] invalid rule list for area '{area}', skipping")
+            continue
+        resolved: list[Callable] = []
+        for entry in names:
+            if isinstance(entry, str):
+                fn = RULE_FUNCTIONS.get(entry)
+                if fn is None:
+                    print(f"[mutator] unknown rule function '{entry}' in area '{area}', skipping")
+                    continue
+                # Pass reflections context only for meta rule proposer.
+                if entry == "mut_meta_add_rule_entry":
+                    def _meta(root: Path, _fn=fn, _ctx=reflections_context):
+                        return _fn(root, reflections_context=_ctx)
+                    _meta.__name__ = getattr(fn, "__name__", "mut_meta_add_rule_entry")
+                    resolved.append(_meta)
+                else:
+                    resolved.append(fn)
+            elif isinstance(entry, dict):
+                dyn_fn = _build_dynamic_rule_fn(entry)
+                resolved.append(dyn_fn)
+        library[area] = resolved
+    return library
 
 
 # ---------------------------------------------------------------------------
@@ -394,7 +593,8 @@ def propose_mutation(
             pass
 
     # Pick a rule-based mutation that hasn't been tried recently
-    rules = MUTATION_LIBRARY.get(area, [])
+    mutation_library = load_mutation_library(reflections_context=reflections_context)
+    rules = mutation_library.get(area, [])
     if not rules:
         raise RuntimeError(f"no mutation rules registered for area '{area}'")
 
