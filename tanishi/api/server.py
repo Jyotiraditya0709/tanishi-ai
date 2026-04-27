@@ -225,73 +225,36 @@ async def websocket_chat(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_text()
-            use_envelope = False
-            user_message = data
-            stripped = data.strip()
-            if stripped.startswith("{"):
-                try:
-                    obj = json.loads(data)
-                    if (
-                        isinstance(obj, dict)
-                        and obj.get("protocol") == "v2"
-                        and isinstance(obj.get("message"), str)
-                    ):
-                        use_envelope = True
-                        user_message = obj["message"]
-                except json.JSONDecodeError:
-                    pass
+            user_message = ""
+            try:
+                obj = json.loads(data)
+                if isinstance(obj, dict) and isinstance(obj.get("message"), str):
+                    user_message = obj["message"]
+            except json.JSONDecodeError:
+                user_message = ""
 
-            if not brain:
-                if use_envelope:
-                    await websocket.send_text(
-                        json.dumps(
-                            {
-                                "type": "error",
-                                "timestamp": datetime.now().isoformat(),
-                                "payload": {"detail": "Brain not initialized"},
-                            }
-                        )
-                    )
+            if not user_message:
+                await websocket.send_text(
+                    json.dumps({"type": "error", "detail": "Invalid websocket payload: expected JSON with 'message'"})
+                )
                 continue
 
-            if use_envelope:
-                ts0 = datetime.now().isoformat()
-                try:
-                    ws_ctx = chat_extra_context(memory, brain.tool_registry)
-                    async for chunk in brain.stream_think(user_message, extra_context=ws_ctx):
-                        await websocket.send_text(
-                            json.dumps(
-                                {
-                                    "type": "chat_token",
-                                    "timestamp": ts0,
-                                    "payload": {"text": chunk},
-                                }
-                            )
-                        )
-                    await websocket.send_text(
-                        json.dumps(
-                            {
-                                "type": "chat_done",
-                                "timestamp": datetime.now().isoformat(),
-                                "payload": {},
-                            }
-                        )
-                    )
-                except Exception as e:
-                    await websocket.send_text(
-                        json.dumps(
-                            {
-                                "type": "error",
-                                "timestamp": datetime.now().isoformat(),
-                                "payload": {"detail": str(e)},
-                            }
-                        )
-                    )
-            else:
+            if not brain:
+                await websocket.send_text(
+                    json.dumps({"type": "error", "detail": "Brain not initialized"})
+                )
+                continue
+
+            try:
                 ws_ctx = chat_extra_context(memory, brain.tool_registry)
-                async for chunk in brain.stream_think(data, extra_context=ws_ctx):
-                    await websocket.send_text(chunk)
-                await websocket.send_text("[END]")
+                async for frame in brain.stream_think(user_message, extra_context=ws_ctx):
+                    await websocket.send_text(
+                        json.dumps(frame)
+                    )
+            except Exception as e:
+                await websocket.send_text(
+                    json.dumps({"type": "error", "detail": str(e)})
+                )
     except WebSocketDisconnect:
         pass
 

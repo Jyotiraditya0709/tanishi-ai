@@ -60,24 +60,28 @@ export const notificationSchema = z.object({
   read: z.boolean(),
 });
 
-export const wsEnvelopeSchema = z.object({
-  type: z.enum(["status", "chat_token", "chat_done", "notification", "error"]),
-  timestamp: z.string(),
-  payload: z.unknown(),
-});
+export const wsFrameSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("chunk"),
+    text: z.string(),
+  }),
+  z.object({
+    type: z.literal("canvas"),
+    kind: z.enum(["mermaid", "chart", "html"]),
+    payload: z.string(),
+  }),
+  z.object({
+    type: z.literal("end"),
+  }),
+  z.object({
+    type: z.literal("error"),
+    detail: z.string(),
+  }),
+]);
 
 /** Outbound WebSocket v2 handshake (client → server). */
 export const wsClientV2HandshakeSchema = z.object({
-  protocol: z.literal("v2"),
   message: z.string().min(1),
-});
-
-export const wsChatTokenPayloadSchema = z.object({
-  text: z.string(),
-});
-
-export const wsErrorPayloadSchema = z.object({
-  detail: z.string(),
 });
 
 export const transcriptMessageSchema = z.object({
@@ -85,6 +89,14 @@ export const transcriptMessageSchema = z.object({
   role: z.enum(["user", "assistant", "system"]),
   text: z.string(),
   createdAt: z.string(),
+  canvases: z
+    .array(
+      z.object({
+        kind: z.enum(["mermaid", "chart", "html"]),
+        payload: z.string(),
+      }),
+    )
+    .optional(),
   stateTag: z.string().optional(),
   pending: z.boolean().optional(),
   error: z.string().optional(),
@@ -96,6 +108,6 @@ export type StatusResponse = z.infer<typeof statusSchema>;
 export type MemoryResponse = z.infer<typeof memorySchema>;
 export type Task = z.infer<typeof taskSchema>;
 export type NotificationItem = z.infer<typeof notificationSchema>;
-export type WsEnvelope = z.infer<typeof wsEnvelopeSchema>;
+export type WsFrame = z.infer<typeof wsFrameSchema>;
 export type WsClientV2Handshake = z.infer<typeof wsClientV2HandshakeSchema>;
 export type TranscriptMessage = z.infer<typeof transcriptMessageSchema>;

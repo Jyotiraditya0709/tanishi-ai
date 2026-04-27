@@ -292,6 +292,55 @@ body {
   font-style: italic;
 }
 
+.canvas-card {
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 10px;
+}
+
+.canvas-card--error {
+  border-color: rgba(255, 120, 100, 0.5);
+  color: rgba(255, 150, 140, 0.95);
+}
+
+.canvas-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 8px;
+}
+
+.canvas-mermaid {
+  overflow-x: auto;
+}
+
+.canvas-mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.canvas-chart {
+  width: 100%;
+  min-height: 200px;
+}
+
+.canvas-chart canvas {
+  width: 100% !important;
+  height: 220px !important;
+}
+
+.canvas-html {
+  width: 100%;
+  min-height: 240px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
 .ghost {
   display: inline-block;
   width: 8px;
