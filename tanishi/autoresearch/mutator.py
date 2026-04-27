@@ -304,6 +304,48 @@ def mut_tool_desc_clearer(root: Path):
     }
 
 
+def mut_scoring_rebalance(root: Path):
+    """
+    Rebalance scorer weights via scoring_config.json (quality/latency/reliability).
+    """
+    f = root / "tanishi/autoresearch/scoring_config.json"
+    text = _read(f)
+    if not text:
+        return None
+    try:
+        cur = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(cur, dict):
+        return None
+    cur_triplet = (
+        round(float(cur.get("quality", 0.6)), 2),
+        round(float(cur.get("latency", 0.2)), 2),
+        round(float(cur.get("reliability", 0.2)), 2),
+    )
+    candidates = [
+        (0.70, 0.15, 0.15),
+        (0.65, 0.15, 0.20),
+        (0.55, 0.20, 0.25),
+        (0.50, 0.25, 0.25),
+        (0.60, 0.10, 0.30),
+    ]
+    options = [c for c in candidates if c != cur_triplet]
+    if not options:
+        return None
+    q, l, r = random.choice(options)
+    new_obj = {"quality": q, "latency": l, "reliability": r}
+    new = json.dumps(new_obj, ensure_ascii=False, indent=2) + "\n"
+    if new == text:
+        return None
+    return {
+        "description": f"scoring_weights: rebalance quality/latency/reliability -> {q:.2f}/{l:.2f}/{r:.2f}",
+        "file": str(f),
+        "old": text,
+        "new": new,
+    }
+
+
 def _build_dynamic_rule_fn(rule_obj: dict) -> Callable:
     """
     Build a mutation callable from a JSON config object.
@@ -426,6 +468,7 @@ RULE_FUNCTIONS: dict[str, Callable] = {
     "mut_voice_smaller_chunks": mut_voice_smaller_chunks,
     "mut_tool_desc_clearer": mut_tool_desc_clearer,
     "mut_meta_add_rule_entry": mut_meta_add_rule_entry,
+    "mut_scoring_rebalance": mut_scoring_rebalance,
 }
 
 

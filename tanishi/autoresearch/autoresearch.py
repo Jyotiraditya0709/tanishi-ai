@@ -69,6 +69,8 @@ EXPERIMENT_AREAS = [
     "memory_retrieval",  # similarity thresholds, top-k for memory recall
     "voice_params",      # filler timing, chunk sizes, TTS settings
     "tool_params",       # timeouts, retries, max tokens
+    "mutation_rules",    # meta: evolve mutation_rules.json itself
+    "scoring_weights",   # meta: rebalance quality/latency/reliability weights
 ]
 
 # ---------------------------------------------------------------------------
@@ -98,6 +100,8 @@ MUTABLE_FILES = [
     "tanishi/config/tool_params.py",
     "tanishi/config/memory_params.py",
     "tanishi/voice/voice_config.py",
+    "tanishi/autoresearch/mutation_rules.json",
+    "tanishi/autoresearch/scoring_config.json",
 ]
 
 def snapshot_state(experiment_id: str) -> Path:

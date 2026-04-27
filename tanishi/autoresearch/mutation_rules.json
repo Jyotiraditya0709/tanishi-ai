@@ -25,5 +25,7 @@
   "mutation_rules": [
     "mut_meta_add_rule_entry"
   ],
-  "scoring_weights": []
+  "scoring_weights": [
+    "mut_scoring_rebalance"
+  ]
 }
