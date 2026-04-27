@@ -60,6 +60,7 @@ def main() -> None:
     print("=" * 72)
     print(f"  Sentinel:   every 60s  (battery / CPU / RAM / breaks / meetings)")
     print(f"  Briefing:   daily at {args.hour:02d}:{args.minute:02d}")
+    print("  Dream:      nightly extraction (default 04:00), weekly consolidate (Sunday)")
     print(f"  Wake word:  {'DISABLED' if args.no_wake else 'jarvis (built-in)'}")
     print("=" * 72)
 
@@ -77,6 +78,21 @@ def main() -> None:
     )
     t_briefing.start()
     print("[main] ✅ briefing scheduler started")
+
+    # Dream memory scheduler thread
+    try:
+        from tanishi.memory.dream_scheduler import run_dream_loop
+
+        t_dream = threading.Thread(
+            target=run_dream_loop,
+            args=(None, None),
+            daemon=True,
+            name="dream",
+        )
+        t_dream.start()
+        print("[main] dream memory thread started")
+    except Exception as e:
+        print(f"[main] dream memory not available: {e}")
 
     # Optional immediate briefing (great for testing)
     if args.briefing_now:
