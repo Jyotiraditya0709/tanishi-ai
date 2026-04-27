@@ -116,23 +116,3 @@ exp_1776185784_0002	2026-04-14T16:56:24.930355	routing_logic	0.000000	0.0000	0	0
 exp_1776186536_0001	2026-04-14T17:08:56.125862	memory_retrieval	0.780384	0.7137	2523	1.0000	discard	memory: increase top_k 5 -> 7
 exp_1776186565_0002	2026-04-14T17:09:25.573519	memory_retrieval	0.718002	0.6050	2420	1.0000	discard	memory: increase top_k 5 -> 7
 exp_1776186594_0003	2026-04-14T17:09:54.929720	memory_retrieval	0.716656	0.6063	2495	1.0000	discard	memory: increase top_k 5 -> 7
-exp_1776188369_0001	2026-04-14T17:39:29.484018	tool_descriptions	0.000000	0.0000	0	0.0000	crash	mutation_proposal_failed: no mutation rules registered for area 'tool_descriptions'
-exp_1776874571_0001	2026-04-22T16:16:11.450308	system_prompt	0.422500	0.0375	342	1.0000	discard	system_prompt: add explicit conciseness instruction
-exp_1776874588_0002	2026-04-22T16:16:28.072098	memory_retrieval	0.418750	0.0312	359	1.0000	discard	memory: lower similarity threshold 0.75 -> 0.70 (recall more)
-exp_1776874600_0003	2026-04-22T16:16:40.937091	voice_params	0.418750	0.0312	348	1.0000	discard	voice: smaller TTS chunks 40 -> 30 (lower latency)
-exp_1776874615_0004	2026-04-22T16:16:55.481833	tool_params	0.418750	0.0312	367	1.0000	discard	tools: more retries 2 -> 3
-exp_1776874628_0005	2026-04-22T16:17:08.460231	system_prompt	0.422500	0.0375	426	1.0000	discard	system_prompt: encourage tool-first behavior
-exp_1776874882_0001	2026-04-22T16:21:22.015981	system_prompt	0.242500	0.2375	19420	0.5000	discard	system_prompt: add explicit conciseness instruction
-exp_1776875112_0002	2026-04-22T16:25:12.093673	memory_retrieval	0.312500	0.3125	21734	0.6250	discard	memory: increase top_k 5 -> 7
-exp_1776875395_0003	2026-04-22T16:29:55.898957	voice_params	0.135000	0.1000	22323	0.3750	discard	voice: smaller TTS chunks 40 -> 30 (lower latency)
-exp_1776875661_0004	2026-04-22T16:34:21.488817	tool_params	0.050000	0.0000	22603	0.2500	discard	tools: tighten timeout 10s -> 8s (fail fast)
-exp_1776875880_0005	2026-04-22T16:38:00.357017	system_prompt	0.150000	0.1250	22729	0.3750	discard	system_prompt: add explicit conciseness instruction
-exp_1777198893_0001	2026-04-26T10:21:33.104793	system_prompt	0.000000	0.0000	0	0.0000	crash	benchmark_crashed: TanishiBrain not importable: No module named 'pydantic_settings'
-exp_1777198893_0002	2026-04-26T10:21:33.109632	memory_retrieval	0.000000	0.0000	0	0.0000	crash	benchmark_crashed: TanishiBrain not importable: No module named 'pydantic_settings'
-exp_1777198893_0003	2026-04-26T10:21:33.112409	voice_params	0.000000	0.0000	0	0.0000	crash	benchmark_crashed: TanishiBrain not importable: No module named 'pydantic_settings'
-exp_1777199311_0001	2026-04-26T10:28:31.192813	system_prompt	0.670968	0.7063	6300	1.0000	discard	system_prompt: encourage tool-first behavior
-exp_1777199373_0002	2026-04-26T10:29:33.740205	memory_retrieval	0.780615	0.8250	4918	1.0000	discard	memory: lower similarity threshold 0.75 -> 0.70 (recall more)
-exp_1777199419_0003	2026-04-26T10:30:19.575920	voice_params	0.653950	0.6938	6643	1.0000	discard	voice: smaller TTS chunks 40 -> 30 (lower latency)
-exp_1777235300_0001	2026-04-26T20:28:20.658931	memory_retrieval	0.704850	0.6212	3244	1.0000	discard	memory: increase top_k 7 -> 9
-exp_1777235341_0002	2026-04-26T20:29:01.615592	tool_params	0.641645	0.6525	6195	1.0000	discard	tools: more retries 2 -> 3
-exp_1777235439_0003	2026-04-26T20:30:39.107060	tool_params	0.672019	0.7025	6181	1.0000	discard	tools: tighten timeout 10s -> 8s (fail fast)
