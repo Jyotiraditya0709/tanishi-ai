@@ -273,7 +273,8 @@ This is a solo project. Feedback, issues, and contributions welcome.
 
 ## License
 
-This repository is licensed under terms specified in [`pyproject.toml`](pyproject.toml). If you'd like to use, redistribute, or build on Tanishi, please open an issue first to discuss licensing.
+Tanishi is licensed under the MIT License.  
+See the [LICENSE](LICENSE) file for details. If you'd like to use, redistribute, or build on Tanishi, please open an issue first to discuss licensing.
 
 ---
 
