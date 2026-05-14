@@ -19,6 +19,7 @@ export const chatResponseSchema = z.object({
 export const statusSchema = z.object({
   brain: z.record(z.string(), z.unknown()).default({}),
   autonomy: z.record(z.string(), z.unknown()).default({}),
+  offline_mode: z.boolean().optional(),
   timestamp: z.string(),
 });
 

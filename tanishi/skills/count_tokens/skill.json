@@ -1,0 +1,27 @@
+{
+  "name": "count_tokens",
+  "version": "1.0.0",
+  "description": "Estimate token count for a text using a simple word-based heuristic.",
+  "author": "community",
+  "category": "utility",
+  "risk_level": "low",
+  "requires_approval": false,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "description": "Text to estimate token count for."
+      }
+    },
+    "required": [
+      "text"
+    ]
+  },
+  "enabled": true,
+  "tags": [
+    "tokens",
+    "utility",
+    "estimation"
+  ]
+}

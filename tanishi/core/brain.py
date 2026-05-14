@@ -141,6 +141,12 @@ class TanishiBrain:
         }
 
     def _select_model(self, user_input: str) -> str:
+        if self.config.offline_mode:
+            if not self.ollama_available:
+                raise RuntimeError(
+                    "Offline mode is enabled but Ollama is not running. Start Ollama first."
+                )
+            return "ollama"
         if self._needs_realtime_tools(user_input) and self.claude_client:
             return "claude"
         if self.config.privacy_mode and self.ollama_available:

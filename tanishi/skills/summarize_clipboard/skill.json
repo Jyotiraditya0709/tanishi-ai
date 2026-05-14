@@ -1,0 +1,20 @@
+{
+  "name": "summarize_clipboard",
+  "version": "1.0.0",
+  "description": "Read clipboard text and summarize it into concise bullet points.",
+  "author": "community",
+  "category": "productivity",
+  "risk_level": "low",
+  "requires_approval": false,
+  "input_schema": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  },
+  "enabled": true,
+  "tags": [
+    "clipboard",
+    "summary",
+    "productivity"
+  ]
+}

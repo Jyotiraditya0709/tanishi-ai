@@ -346,6 +346,111 @@ def mut_scoring_rebalance(root: Path):
     }
 
 
+def _list_skill_manifests(root: Path) -> list[Path]:
+    skills_root = root / "tanishi" / "skills"
+    manifests = []
+    if not skills_root.exists():
+        return manifests
+    for p in skills_root.glob("*/skill.json"):
+        if p.is_file():
+            manifests.append(p)
+    return manifests
+
+
+def mutate_skill_enabled(root: Path):
+    manifests = _list_skill_manifests(root)
+    if not manifests:
+        return None
+    random.shuffle(manifests)
+    for f in manifests:
+        text = _read(f)
+        if not text:
+            continue
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(data, dict) or "enabled" not in data:
+            continue
+        name = str(data.get("name", f.parent.name))
+        cur = bool(data.get("enabled", True))
+        data["enabled"] = not cur
+        new = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+        if new == text:
+            continue
+        return {
+            "description": f"skill_registry: toggle enabled for {name} ({cur} -> {not cur})",
+            "file": str(f),
+            "old": text,
+            "new": new,
+        }
+    return None
+
+
+def mutate_skill_description(root: Path):
+    manifests = _list_skill_manifests(root)
+    if not manifests:
+        return None
+    random.shuffle(manifests)
+    for f in manifests:
+        text = _read(f)
+        if not text:
+            continue
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(data, dict):
+            continue
+        skill_name = str(data.get("name", f.parent.name)).strip()
+        old_desc = str(data.get("description", "")).strip()
+        if not skill_name or not old_desc:
+            continue
+
+        # User requested Claude for this specific mutation rule.
+        try:
+            from anthropic import Anthropic
+
+            client = Anthropic()
+            prompt = (
+                "Rewrite this tool description to maximize tool selection quality.\n"
+                "Rules:\n"
+                "- 10 to 150 characters\n"
+                "- Lead with user outcome, not implementation detail\n"
+                "- Do NOT start with the tool name\n"
+                "- One sentence only\n\n"
+                f"Tool name: {skill_name}\n"
+                f"Current description: {old_desc}\n\n"
+                "Return only the rewritten description text."
+            )
+            msg = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=120,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            new_desc = msg.content[0].text.strip().strip('"').strip()
+        except Exception:
+            continue
+
+        if not (10 <= len(new_desc) <= 150):
+            continue
+        first_word = new_desc.split()[0].lower() if new_desc.split() else ""
+        if first_word == skill_name.lower():
+            continue
+        if new_desc == old_desc:
+            continue
+
+        data["description"] = new_desc
+        new = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+        return {
+            "description": f"skill_registry: rewrite description for {skill_name}",
+            "file": str(f),
+            "old": text,
+            "new": new,
+        }
+    return None
+
+
 def _build_dynamic_rule_fn(rule_obj: dict) -> Callable:
     """
     Build a mutation callable from a JSON config object.
@@ -469,6 +574,8 @@ RULE_FUNCTIONS: dict[str, Callable] = {
     "mut_tool_desc_clearer": mut_tool_desc_clearer,
     "mut_meta_add_rule_entry": mut_meta_add_rule_entry,
     "mut_scoring_rebalance": mut_scoring_rebalance,
+    "mutate_skill_enabled": mutate_skill_enabled,
+    "mutate_skill_description": mutate_skill_description,
 }
 
 

@@ -30,7 +30,8 @@ dependencies = [
 [project.optional-dependencies]
 memory = ["chromadb>=0.5.0", "mem0ai>=0.1.0"]
 voice = ["faster-whisper>=1.0.0", "pipecat-ai>=0.5.0"]
-all = ["project-tanishi[memory,voice]"]
+offline = ["sentence-transformers>=3.0.0"]
+all = ["project-tanishi[memory,voice,offline]"]
 
 [project.scripts]
 tanishi = "tanishi.cli:main"

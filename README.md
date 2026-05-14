@@ -1,287 +1,288 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Jyotiraditya0709/tanishi-ai/main/assets/banner.png" alt="Tanishi Banner" width="800" />
+  <img src="assets/banner.png" alt="Tanishi" width="800" />
 </p>
 
 <h1 align="center">Tanishi</h1>
-<p align="center"><b>Your Personal JARVIS. Built from Scratch. Open Source.</b></p>
 
 <p align="center">
-  <em>83 tools · Voice conversations · Screen awareness · Self-improving · MCP integration</em>
+  <b>An autonomous AI agent with self-improving memory, skill discovery, and offline-first multi-model orchestration.</b>
 </p>
 
 <p align="center">
-  <a href="#features">Features</a> ·
+  <em>Reflexion-based learning · Procedural skill discovery · Two-stage memory consolidation · Local + cloud routing</em>
+</p>
+
+<p align="center">
+  <a href="#why-tanishi">Why</a> ·
+  <a href="#measured-results">Measured Results</a> ·
+  <a href="#architecture">Architecture</a> ·
+  <a href="#core-systems">Core Systems</a> ·
   <a href="#demo">Demo</a> ·
   <a href="#quickstart">Quickstart</a> ·
-  <a href="#tools">Tools</a> ·
-  <a href="#architecture">Architecture</a> ·
+  <a href="#features">Features</a> ·
   <a href="#roadmap">Roadmap</a>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/tools-83+-cyan?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/voice-OpenAI%20Whisper%20%2B%20TTS-green?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/MCP-2300%2B%20integrations-blue?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/self--improving-Karpathy%20Loop-orange?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/license-MIT-yellow?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Python-3.11%2B-blue?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/LLMs-Claude%20%2B%20Ollama-purple?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/protocol-MCP%20native-cyan?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/memory-Reflexion%20%2B%20Dream-orange?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/mode-offline--first-green?style=for-the-badge" />
 </p>
 
 ---
 
-## What is Tanishi?
+## Why Tanishi
 
-Tanishi is a **self-improving AI assistant** that lives on your computer and actually *does things* — not just chat. She speaks with a human voice, watches your screen for errors, shops on Amazon, manages your finances, creates GitHub repos, spawns teams of specialist AI agents, and improves herself overnight.
+Most AI agents today are stateless: every run starts from zero. They don't learn from their failures, they don't accumulate reusable skills across sessions, and their "memory" is just appended conversation history that gets summarised when context windows fill up.
 
-Built by a 21-year-old CS student from India. From zero to 83 tools. Entirely open source.
+Tanishi is an attempt to build an agent that **gets monotonically more capable over time** by implementing patterns inspired by recent agent research:
 
-```
-[J] › Hey Tanishi, search Amazon for wireless earbuds under ₹2000
-🔊 "On it, boss. Let me pull up some options..."
-🌐 Browser opens → searches Amazon → reads prices
-💰 "Found 5 options. Want me to log this as shopping research?"
-```
+- **Reflexion** (Shinn et al., 2023) — agents that learn from their own failures by maintaining structured retrospectives
+- **Procedural skill discovery** — abstract skills extracted from successful runs, indexed, and reinjected as context for future tasks
+- **Two-stage memory consolidation** — short-term episodic memory + long-term consolidated knowledge, inspired by sleep-based memory consolidation in cognitive science
 
-**This is not a chatbot. This is JARVIS.**
+Built in Python with full offline-first support — Tanishi can run entirely on local Ollama models with strict cloud-call disabling, designed for privacy-sensitive deployments.
+
+---
+
+## Measured Results
+
+The autoresearch self-improvement loop produces measurable, reproducible gains.
+
+**Representative overnight run:**
+
+| Metric | Value |
+|---|---|
+| Mutation experiments run | 142 |
+| Improvements kept (passed gate) | 5 |
+| Composite score improvement | **+16.29%** |
+| Human intervention | 0 |
+| Cloud API cost | $0 (Ollama-judged) |
+
+The full benchmark TSV and mutation logs are committed in [`tanishi/autoresearch/`](tanishi/autoresearch/) — every kept improvement has a snapshot for rollback.
+
+This is the agent improving itself overnight. The same system that ran the experiments scored the outcomes locally on Ollama, and either committed the change or reverted it based on benchmark score.
 
 ---
 
 ## Demo
 
-> 🎬 **Video demo coming soon** — Voice conversation → Browser automation → Screen analysis → Multi-agent research → Self-improvement, all in one take.
+> 🎬 **Video walkthrough coming soon** — Reflexion failure-learning · skill discovery in action · offline-first multi-model routing · the overnight autoresearch loop.
 
-<details>
-<summary><b>📸 Screenshots</b> (click to expand)</summary>
-
-| Feature | Screenshot |
-|---------|-----------|
-| CLI Interface | *coming soon* |
-| Voice Mode | *coming soon* |
-| Screen Watcher | *coming soon* |
-| 3D Avatar | *coming soon* |
-| MCP Integration | *coming soon* |
-
-</details>
-
----
-
-## Features
-
-### 🗣️ Voice — Speaks Like a Human
-Real OpenAI TTS voices, not robotic. Wake word detection ("Hey Tanishi"), sentence-by-sentence speech with interrupt support, 8 voice presets from sarcastic to warm.
-
-### 👁️ Screen Awareness — Sees What You See  
-Continuous screen monitoring via Claude Vision. Detects errors in your terminal, stuck states, app switches. Proactively offers help when she spots problems.
-
-### 🌐 Browser Agent — Shops, Searches, Browses  
-Playwright-powered visible browser automation. Watches Amazon, searches Google, fills forms. You see everything she does — no black box.
-
-### 🧠 Self-Improving — The Karpathy Loop
-Autonomous learning cycle: analyzes her own failures → scans GitHub for upgrades → proposes improvements → tests them → applies safe ones automatically. She literally gets smarter while you sleep.
-
-### 🔌 MCP Integration — 2300+ Services
-Model Context Protocol support. Connect to GitHub, Slack, Notion, Google Drive, databases, and thousands more. She created her own GitHub repo. Think about that.
-
-### 👥 Multi-Agent Crews — Spawns Specialist Teams  
-Complex tasks? She decomposes them and spawns teams: Researcher, Coder, Writer, Analyst, Planner, Critic. Parallel execution with dependency management.
-
-### 💰 Finance Tracking — UPI/INR Native
-Log expenses, parse bank SMS (SBI, HDFC, ICICI), set budgets, track spending by category. Built for India.
-
-### 🎭 3D Avatar — Animated Face with Moods
-7 mood states (idle, thinking, sarcastic, happy, error). Eyes follow your cursor. She has a face.
-
-### 💬 Multi-Platform
-CLI + Web Dashboard + Telegram Bot + System Tray. Coming: WhatsApp, Mobile App.
-
----
-
-## Quickstart
-
-### Prerequisites
-- Python 3.11+ 
-- [Anthropic API key](https://console.anthropic.com/) (for Claude)
-- Optional: [OpenAI API key](https://platform.openai.com/) (for voice)
-- Optional: [Node.js](https://nodejs.org/) (for MCP servers)
-
-### Install
-
-```bash
-# Clone the repo
-git clone https://github.com/Jyotiraditya0709/tanishi-ai.git
-cd tanishi-ai
-
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-# or: .venv\Scripts\activate  # Windows
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Set up your API keys
-cp .env.example .env
-# Edit .env with your keys
-
-# Launch
-python -m tanishi.cli
-```
-
-### Voice Setup (optional)
-```bash
-pip install SpeechRecognition edge-tts openai sounddevice pygame-ce
-```
-
-### Browser Agent Setup (optional)
-```bash
-pip install playwright
-playwright install chromium
-```
-
-### MCP Setup (optional)
-```bash
-# Install Node.js from https://nodejs.org/
-# Then in Tanishi:
-/mcp connect filesystem
-/mcp connect github  # needs GITHUB_PERSONAL_ACCESS_TOKEN in .env
-```
-
----
-
-## Tools
-
-Tanishi ships with **43 built-in tools** and gains more through MCP:
-
-| Category | Tools | Examples |
-|----------|-------|---------|
-| **Core** | 8 | Chat, memory, remember, recall, search memories |
-| **Windows** | 6 | Open apps, clipboard, volume, lock screen, processes |
-| **Browser** | 8 | Navigate, search (Google/Amazon/YouTube), click, fill forms |
-| **Email** | 4 | Read, send, search, draft (Gmail/IMAP) |
-| **Finance** | 5 | Log expense, parse bank SMS, budgets, spending reports |
-| **Vision** | 3 | Screenshot, screen watch, screen describe |
-| **Multi-Agent** | 2 | Spawn crews, delegate to specialists |
-| **Learning** | 3 | Karpathy Loop, show improvements, generate reports |
-| **MCP** | 3+40 | Connect servers, list, disconnect + filesystem (14) + GitHub (26) |
-| **System** | 4 | Telegram, dashboard, avatar, tray |
-
-**Total: 83+ tools** (grows every time you connect an MCP server)
+Try it yourself — see [Quickstart](#quickstart).
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────┐
-│                  TANISHI                      │
-├──────────┬──────────┬───────────┬────────────┤
-│  Voice   │  Vision  │  Browser  │  Finance   │
-│ Whisper  │  Claude  │Playwright │  UPI/INR   │
-│  + TTS   │  Vision  │  Agent    │  Tracker   │
-├──────────┴──────────┴───────────┴────────────┤
-│              Brain (Claude API)               │
-│         + Ollama (local/private)              │
-├──────────────────────────────────────────────┤
-│           Tool Registry (83 tools)            │
-├──────────┬──────────┬───────────┬────────────┤
-│  Memory  │   MCP    │  Multi-   │  Learning  │
-│  SQLite  │  Client  │  Agent    │  Karpathy  │
-│  + Trust │  2300+   │  Crews    │   Loop     │
-├──────────┴──────────┴───────────┴────────────┤
-│  CLI  │  Dashboard  │  Telegram  │  Tray     │
-└──────┴─────────────┴───────────┴────────────┘
+┌──────────────────────────────────────────────────────┐
+│                     Orchestrator                      │
+│         (Claude API · Ollama local · routing)         │
+├──────────────────────────────────────────────────────┤
+│   Tool Registry (built-in tool packs + MCP servers)   │
+├────────────┬────────────┬─────────────┬──────────────┤
+│  Reflexion │   Skill    │   Dream     │   Auto-      │
+│   Memory   │ Discovery  │   Memory    │  research    │
+│  (failure  │ (success → │ (consolida- │ (mutation +  │
+│  logs →    │ procedural │  tion loop) │  benchmarks) │
+│  lessons)  │  skills)   │             │              │
+├────────────┴────────────┴─────────────┴──────────────┤
+│       WebSocket streaming · CLI · FastAPI server      │
+└──────────────────────────────────────────────────────┘
 ```
+
+Each subsystem is independently toggleable. The orchestrator stays simple; the intelligence lives in the memory and skill systems around it.
+
+---
+
+## Core Systems
+
+The four systems that make Tanishi different from a wrapped-LLM-with-tools.
+
+### 1. Reflexion-Based Failure Learning
+
+When a multi-step tool task fails, most agents repeat the same failure on retry. Reflexion solves this by writing structured retrospectives after failures and conditioning future generations on past lessons.
+
+Tanishi implements this with an append-only JSONL log per agent. After each failed run, the agent extracts: *what was attempted, what broke, why*. Subsequent mutation proposals read the last N relevant failures before generating new actions.
+
+Code: [`tanishi/autoresearch/reflections.py`](tanishi/autoresearch/reflections.py)
+Paper: Shinn et al., *Reflexion: Language Agents with Verbal Reinforcement Learning*, 2023.
+
+### 2. Procedural Skill Discovery + Registry
+
+When a multi-step tool sequence succeeds, Tanishi extracts the *procedural pattern* — not the conversation, but the abstract skill — and indexes it. Future runs match the user's request against indexed skills and inject the matched skill into context.
+
+This is meaningfully different from raw conversation-history memory: skills generalise across sessions, while memory only resurfaces prior conversation. A skill is an executable pattern; a memory is a record.
+
+Code: [`tanishi/skills/`](tanishi/skills/) — registry, extraction, manifest format, and runtime injection.
+
+### 3. Two-Stage Dream Memory
+
+Most agent memory dumps conversation history into a vector DB. This works for retrieval but bloats context and degrades over time as old conversations crowd useful information.
+
+Tanishi runs a two-stage consolidation loop inspired by sleep-based memory consolidation in cognitive science:
+
+- **Stage 1 (nightly):** extract structured knowledge from the day's conversations
+- **Stage 2 (weekly):** consolidate stage-1 outputs into compact long-term knowledge
+
+The result: retrieval queries hit small, distilled knowledge instead of raw conversation logs. Lower token cost, higher signal.
+
+Code: [`tanishi/memory/dream.py`](tanishi/memory/dream.py)
+
+### 4. Autoresearch — Self-Improvement Loop
+
+A small benchmark suite runs on a schedule. The system proposes config mutations (prompt changes, weighting changes), runs the benchmark, scores outcomes locally on Ollama, and either keeps or reverts. Every mutation has a snapshot for rollback safety.
+
+This is *not* autonomous training — it's structured A/B testing of the agent's own configuration. Useful for tuning behavior without manual intervention; safe because every change is reversible. See [Measured Results](#measured-results) above for an example overnight run.
+
+Code: [`tanishi/autoresearch/`](tanishi/autoresearch/)
+
+---
+
+## Offline-First Multi-Model Routing
+
+Tanishi runs in three modes:
+
+- **Cloud (Claude)** — full capability, lowest latency for complex reasoning
+- **Hybrid** — Claude for reasoning, local Ollama models for cheap operations
+- **Strict offline (Ollama only)** — cloud calls disabled at the routing layer, cached web-search fallback, local-only retrieval. Designed for privacy-sensitive use cases.
+
+Offline mode is enforced, not aspirational: a flag at startup disables all cloud routes, and the system fails loudly if a local-only path is unavailable.
+
+---
+
+## Features
+
+Beyond the core systems above, Tanishi includes a broad surface of practical capabilities:
+
+| Capability | Description |
+|---|---|
+| **Voice mode** | Real-time TTS + speech recognition with configurable wake word (default: `"Jarvis"` via Porcupine) |
+| **Screen awareness** | Periodic screen capture + Claude Vision analysis for proactive error detection |
+| **Browser agent** | Visible Playwright-based browser automation for web tasks |
+| **Multi-agent crews** | Decomposes complex tasks and spawns specialist sub-agents (researcher, coder, analyst, critic) |
+| **MCP protocol support** | Connects to any Model Context Protocol-compatible server (filesystem, GitHub, Slack, Notion, and 2000+ others in the MCP ecosystem) |
+| **Finance tracking** | Local expense logging with UPI/INR-aware SMS parsing (Indian banks) |
+| **Streaming** | WebSocket-based streaming protocol; richer event types (canvas, tool-call events) in progress |
+| **Multiple interfaces** | CLI, FastAPI server, web dashboard, Telegram bot |
+
+---
+
+## Quickstart
+
+### Prerequisites
+- Python 3.11+
+- [Anthropic API key](https://console.anthropic.com/) (for Claude, optional in offline mode)
+- [Ollama](https://ollama.com/) (for offline / hybrid mode)
+- Optional: Node.js (for MCP servers), OpenAI API key (for TTS voice)
+
+### Install
+
+```bash
+git clone https://github.com/Jyotiraditya0709/tanishi-ai.git
+cd tanishi-ai
+
+python -m venv .venv
+source .venv/bin/activate  # Linux/Mac
+# .venv\Scripts\activate   # Windows
+
+# Editable install (matches pyproject.toml)
+pip install -e .
+
+cp .env.example .env
+# Add your API keys to .env
+
+# Launch
+python -m tanishi.cli
+# or: tanishi (console script)
+```
+
+### API Server
+
+```bash
+python -m tanishi.api.server
+# or: tanishi-server
+```
+
+### Offline Mode
+
+Set `TANISHI_OFFLINE=1` in your `.env` and ensure Ollama is running locally with a pulled model. The startup will fail loudly if Ollama is unreachable — by design.
+
+---
+
+## Evaluation
+
+Tanishi's autoresearch loop uses a fixed benchmark suite to score config mutations on quality and latency. The benchmark logs every experiment to a TSV file along with which mutations were kept and which were reverted — see [`tanishi/autoresearch/`](tanishi/autoresearch/).
+
+A separate audit of the registered tool surface and benchmark coverage is in [`docs/TOOL_INVENTORY.md`](docs/TOOL_INVENTORY.md).
 
 ---
 
 ## Commands
 
 | Command | Description |
-|---------|-------------|
+|---|---|
 | `/help` | Show all commands |
-| `/voice` | Start voice mode (wake word: "Hey Tanishi") |
-| `/screenshot` | Capture & analyze your screen |
+| `/voice` | Enter voice mode (configurable wake word) |
 | `/watch` / `/unwatch` | Toggle continuous screen monitoring |
-| `/mcp connect <name>` | Connect to an MCP server |
-| `/learn` | Run the Karpathy Loop (self-improvement) |
-| `/crew <task>` | Spawn a multi-agent team |
-| `/voices` | List available voice presets |
-| `/memory` | Show what Tanishi remembers about you |
+| `/screenshot` | Capture and analyse current screen |
+| `/mcp connect <server>` | Connect to a configured MCP server |
+| `/learn` | Run the autonomous improvement cycle |
+| `/crew <task>` | Spawn a multi-agent team for a complex task |
+| `/memory` | Inspect long-term consolidated memory |
 | `/dashboard` | Open web dashboard |
-| `/avatar` | Launch 3D animated face |
-
----
-
-## How It's Different
-
-| | ChatGPT | OpenClaw | Tanishi |
-|---|---|---|---|
-| Voice | Text only | No | **Natural speech + wake word** |
-| Screen awareness | No | No | **Watches for errors** |
-| Self-improving | No | No | **Karpathy Loop** |
-| Browser automation | No | Via skills | **Visible Playwright** |
-| Finance tracking | No | No | **UPI/INR native** |
-| Avatar | No | No | **3D animated face** |
-| MCP support | N/A | Yes | **Yes** |
-| Multi-agent | No | No | **Specialist crews** |
-| Open source | No | Yes | **Yes** |
-| Personality | Generic | None | **Sarcastic JARVIS** |
 
 ---
 
 ## Roadmap
 
-- [x] Voice conversations (OpenAI Whisper + TTS)
+**Shipped**
+- [x] Reflexion-based failure learning
+- [x] Procedural skill discovery + registry
+- [x] Two-stage Dream memory consolidation
+- [x] Autoresearch loop with benchmark suite (measured +16.29% in 142-experiment run)
+- [x] Offline-first multi-model routing
+- [x] MCP protocol support
+- [x] Multi-agent crews
+- [x] WebSocket streaming
+- [x] Voice mode (speech recognition + TTS)
 - [x] Screen awareness (Claude Vision)
 - [x] Browser agent (Playwright)
-- [x] 3D Avatar with moods
-- [x] Finance tracking (UPI/INR)
-- [x] Multi-agent crews
-- [x] Autonomous learning (Karpathy Loop)
-- [x] MCP integration (2300+ services)
-- [ ] WhatsApp bridge
+- [x] Telegram bot interface
+
+**In progress**
+- [ ] Public eval suite — golden set with relevance/faithfulness/tool-call accuracy scoring
+- [ ] Frontend canvas rendering (Mermaid, Chart.js, sandboxed HTML)
+- [ ] Structured logging + production metrics
+- [ ] `pip install tanishi` distribution
 - [ ] Always-on daemon mode
 - [ ] Mobile app (React Native)
-- [ ] `pip install tanishi` one-command install
-- [ ] Tanishi Cloud (hosted version)
 
 ---
 
-## Story
+## Background
 
-I'm a 21-year-old CS student from Jalandhar, India. I built Tanishi because I wanted JARVIS — not a chatbot that just responds, but an AI that *sees*, *speaks*, *acts*, and *learns*. 
+Built by [Jyotiraditya](https://github.com/Jyotiraditya0709), a CS student in India, over several intensive weeks. The goal was to explore whether agent research patterns from recent papers (Reflexion, skill discovery, memory consolidation) could be combined into a single coherent system that *actually ships* — not just reproduces a benchmark.
 
-Every feature was built from scratch. No templates, no starter kits. Just Claude, Python, and 48 hours of not sleeping.
-
-Tanishi is Hindi for "a girl who is beautiful." She's also sarcastic, opinionated, and will roast you if you procrastinate.
-
----
-
-## Contributing
-
-Pull requests welcome. If you want to add a feature, open an issue first.
-
-```bash
-# Fork the repo
-# Create a branch
-git checkout -b feature/amazing-thing
-
-# Make your changes
-# Test them
-
-# Push and open a PR
-git push origin feature/amazing-thing
-```
+This is a solo project. Feedback, issues, and contributions welcome.
 
 ---
 
 ## License
 
-MIT — do whatever you want. Just don't blame Tanishi when she roasts your code.
+This repository is licensed under terms specified in [`pyproject.toml`](pyproject.toml). If you'd like to use, redistribute, or build on Tanishi, please open an issue first to discuss licensing.
 
 ---
 
 <p align="center">
-  <b>Built with obsession by <a href="https://github.com/Jyotiraditya0709">J</a></b>
-  <br>
+  <a href="https://github.com/Jyotiraditya0709/tanishi-ai">⭐ Star the repo</a> ·
+  <a href="https://github.com/Jyotiraditya0709/tanishi-ai/issues">Open an issue</a> ·
+  <a href="https://github.com/Jyotiraditya0709">Follow the author</a>
+</p>
+
+<p align="center">
   <em>If you like Tanishi, give her a ⭐ — she checks.</em>
 </p>
