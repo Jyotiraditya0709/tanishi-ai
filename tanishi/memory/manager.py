@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass, field
 
+from tanishi.core import get_config
+from tanishi.memory.embeddings import get_local_embedder
 
 @dataclass
 class MemoryEntry:
@@ -158,36 +160,78 @@ class MemoryManager:
 
     def recall(self, query: str, limit: int = 5) -> list[MemoryEntry]:
         """Search memories by keyword (basic search — will be upgraded to vector search)."""
+        return self.search(query, top_k=limit)
+
+    def search(self, query: str, top_k: int = 5) -> list[MemoryEntry]:
+        """Primary memory search path."""
+        cfg = get_config()
+        if getattr(cfg, "offline_mode", False):
+            return self.search_local(query, top_k=top_k)
+
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        # Basic keyword search (Phase 2 will add semantic/vector search via ChromaDB)
         cursor.execute("""
             SELECT * FROM memories
             WHERE content LIKE ? OR tags LIKE ?
             ORDER BY importance DESC, access_count DESC
             LIMIT ?
-        """, (f"%{query}%", f"%{query}%", limit))
+        """, (f"%{query}%", f"%{query}%", top_k))
 
-        results = []
-        for row in cursor.fetchall():
-            entry = MemoryEntry(
-                id=row[0], content=row[1], category=row[2],
-                importance=row[3], tags=json.loads(row[4]),
-                source=row[5], created_at=row[6],
-                last_accessed=row[7], access_count=row[8],
-            )
-            results.append(entry)
-
-            # Update access stats
-            cursor.execute("""
-                UPDATE memories SET last_accessed = ?, access_count = access_count + 1
-                WHERE id = ?
-            """, (datetime.now().isoformat(), entry.id))
-
+        rows = cursor.fetchall()
+        results = [self._row_to_memory(row) for row in rows]
+        self._touch_memories(cursor, [m.id for m in results])
         conn.commit()
         conn.close()
         return results
+
+    def search_local(self, query: str, top_k: int = 5) -> list[MemoryEntry]:
+        """Offline local retrieval using sentence-transformers with fallback scoring."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM memories
+            ORDER BY created_at DESC
+            LIMIT 300
+        """)
+        rows = cursor.fetchall()
+        if not rows:
+            conn.close()
+            return []
+
+        embedder = get_local_embedder()
+        scored: list[tuple[float, tuple]] = []
+        for row in rows:
+            mem_text = f"{row[1]} {' '.join(json.loads(row[4] or '[]'))}"
+            score = embedder.similarity(query, mem_text)
+            # Keep existing ranking signals in play.
+            score += float(row[3] or 0.0) * 0.05
+            score += min(int(row[8] or 0), 10) * 0.01
+            scored.append((score, row))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        selected = [row for _, row in scored[:top_k]]
+        results = [self._row_to_memory(row) for row in selected]
+        self._touch_memories(cursor, [m.id for m in results])
+        conn.commit()
+        conn.close()
+        return results
+
+    def _row_to_memory(self, row) -> MemoryEntry:
+        return MemoryEntry(
+            id=row[0], content=row[1], category=row[2],
+            importance=row[3], tags=json.loads(row[4]),
+            source=row[5], created_at=row[6],
+            last_accessed=row[7], access_count=row[8],
+        )
+
+    def _touch_memories(self, cursor: sqlite3.Cursor, ids: list[str]) -> None:
+        now = datetime.now().isoformat()
+        for entry_id in ids:
+            cursor.execute("""
+                UPDATE memories SET last_accessed = ?, access_count = access_count + 1
+                WHERE id = ?
+            """, (now, entry_id))
 
     def get_recent_memories(self, limit: int = 10) -> list[MemoryEntry]:
         """Get most recent memories."""

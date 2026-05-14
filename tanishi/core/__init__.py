@@ -7,7 +7,16 @@ import os
 from pathlib import Path
 from typing import Optional
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import AliasChoices, Field
+
+# Load `.env` from the repo root first (so `python -m tanishi.api.server` works even if cwd ≠ project).
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_REPO_ENV = _PROJECT_ROOT / ".env"
+_ENV_FILES = tuple(
+    p
+    for p in (_REPO_ENV, Path(".env"))
+    if p.is_file()
+)
 
 
 class TanishiConfig(BaseSettings):
@@ -40,13 +49,17 @@ class TanishiConfig(BaseSettings):
     port: int = Field(default=8888, alias="TANISHI_PORT")
 
     # --- Behavior ---
-    default_llm: str = "claude"
+    default_llm: str = Field(
+        default="claude",
+        validation_alias=AliasChoices("DEFAULT_LLM", "default_llm"),
+    )
     privacy_mode: bool = False
+    offline_mode: bool = Field(default=False, alias="TANISHI_OFFLINE")
     max_conversation_history: int = 50
     auto_improve: bool = True
 
     model_config = {
-        "env_file": ".env",
+        "env_file": _ENV_FILES if _ENV_FILES else ".env",
         "env_file_encoding": "utf-8",
         "extra": "ignore",
     }

@@ -5,9 +5,11 @@ import { useAppStore } from "../state/store";
 export function WidgetPanel() {
   const avatar = useAppStore((s) => s.avatar);
   const widget = useAppStore((s) => s.widget);
+  const runtimeStatus = useAppStore((s) => s.runtimeStatus);
   const setMode = useAppStore((s) => s.setMode);
   const markRead = useAppStore((s) => s.markRead);
   const current = tanishiStates[avatar.emotionState];
+  const offlineMode = Boolean(runtimeStatus?.offline_mode);
 
   return (
     <section className="widget-stage">
@@ -19,6 +21,7 @@ export function WidgetPanel() {
           <div className="w-head-text">
             <div className="w-name-row">
               <div className="w-name">Tanishi</div>
+              {offlineMode ? <span className="offline-badge">OFFLINE</span> : null}
               {widget.unreadCount > 0 ? (
                 <span className="w-badge" aria-label={`${widget.unreadCount} unread`}>
                   {widget.unreadCount}

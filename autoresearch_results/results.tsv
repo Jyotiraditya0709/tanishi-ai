@@ -136,3 +136,8 @@ exp_1777199419_0003	2026-04-26T10:30:19.575920	voice_params	0.653950	0.6938	6643
 exp_1777235300_0001	2026-04-26T20:28:20.658931	memory_retrieval	0.704850	0.6212	3244	1.0000	discard	memory: increase top_k 7 -> 9
 exp_1777235341_0002	2026-04-26T20:29:01.615592	tool_params	0.641645	0.6525	6195	1.0000	discard	tools: more retries 2 -> 3
 exp_1777235439_0003	2026-04-26T20:30:39.107060	tool_params	0.672019	0.7025	6181	1.0000	discard	tools: tighten timeout 10s -> 8s (fail fast)
+exp_1777294329_0001	2026-04-27T12:52:09.572987	scoring_weights	0.100000	0.0000	0	0.0000	discard	scoring_weights: rebalance quality/latency/reliability -> 0.60/0.10/0.30
+exp_1777294329_0002	2026-04-27T12:52:09.619912	scoring_weights	0.150000	0.0000	0	0.0000	discard	scoring_weights: rebalance quality/latency/reliability -> 0.70/0.15/0.15
+exp_1777294380_0001	2026-04-27T12:53:00.437047	mutation_rules	0.743750	0.9062	12158	1.0000	discard	mutation_rules: add dynamic rule for system_prompt — Introduce a blended prompt style, balancing tool-first with a more conversational and detailed system prompt.
+exp_1777294506_0002	2026-04-27T12:55:06.073522	mutation_rules	0.668750	0.7812	12940	1.0000	discard	mutation_rules: add dynamic rule for system_prompt — Introduce a nuanced prompt that prioritizes both tool usage and conversational flow, mitigating the negative effects of overly aggressive 'tool-fir
+exp_1777294664_0001	2026-04-27T12:57:44.459356	scoring_weights	0.665625	0.8313	13175	1.0000	discard	scoring_weights: rebalance quality/latency/reliability -> 0.50/0.25/0.25

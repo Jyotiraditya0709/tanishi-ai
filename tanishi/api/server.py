@@ -14,6 +14,8 @@ import os
 import json
 import uuid
 import asyncio
+import argparse
+import threading
 from datetime import datetime
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -31,6 +33,7 @@ from tanishi.tools import register_all_tools
 from tanishi.tools.registry import ToolRegistry
 from tanishi.memory.manager import MemoryManager
 from tanishi.core.autonomy import AutonomyEngine
+from tanishi.skills.skill_loader import SkillLoader
 
 
 # ============================================================
@@ -43,14 +46,43 @@ autonomy: AutonomyEngine = None
 config = None
 
 
+def _is_offline_requested() -> bool:
+    v = os.getenv("TANISHI_OFFLINE", "").strip().lower()
+    return v in {"1", "true", "on", "yes"}
+
+
+def _apply_offline_overrides(cfg) -> bool:
+    if not _is_offline_requested():
+        return False
+    cfg.offline_mode = True
+    cfg.default_llm = "ollama"
+    cfg.privacy_mode = True
+    print("[offline] Tanishi starting in offline mode — all cloud calls disabled")
+    return True
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global brain, memory, autonomy, config
     config = get_config()
+    _apply_offline_overrides(config)
+    if config.offline_mode:
+        try:
+            from tanishi.memory.embeddings import prewarm_local_embedder
+
+            print("[embeddings] pre-warming local model in background...")
+            threading.Thread(
+                target=prewarm_local_embedder,
+                daemon=True,
+                name="embeddings-prewarm",
+            ).start()
+        except Exception as e:
+            print(f"[embeddings] pre-warm skipped: {e}")
 
     # Tools
     registry = ToolRegistry()
     register_all_tools(None, registry)
+    SkillLoader().load_all(Path(__file__).resolve().parents[1] / "skills", registry)
 
     brain = TanishiBrain(tool_registry=registry)
     memory = MemoryManager(config.db_path)
@@ -66,6 +98,8 @@ async def lifespan(app: FastAPI):
 
     status = brain.get_status()
     print(f"\n⚡ Tanishi API + Dashboard online")
+    print(f"   Default LLM: {status.get('default_llm', '?')}")
+    print(f"   Ollama: {status.get('ollama', '?')}")
     print(f"   Claude: {status['claude']}")
     print(f"   Tools: {status['tools']}")
     print(f"   Dashboard: http://localhost:{config.port}\n")
@@ -166,6 +200,7 @@ async def status():
     return {
         "brain": brain.get_status() if brain else {},
         "autonomy": autonomy.get_status() if autonomy else {},
+        "offline_mode": bool(config.offline_mode) if config else False,
         "timestamp": datetime.now().isoformat(),
     }
 
@@ -371,7 +406,15 @@ async def screenshot(body: dict = {}):
 
 def main():
     import uvicorn
+    parser = argparse.ArgumentParser(description="Run Tanishi API server")
+    parser.add_argument("--offline", action="store_true", help="force offline mode (Ollama only)")
+    args = parser.parse_args()
+
+    if args.offline:
+        os.environ["TANISHI_OFFLINE"] = "1"
+
     config = get_config()
+    _apply_offline_overrides(config)
     print(f"\n🧠 Starting Tanishi Dashboard on http://localhost:{config.port}")
     uvicorn.run(app, host=config.host, port=config.port)
 

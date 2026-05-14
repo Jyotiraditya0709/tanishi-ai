@@ -27,5 +27,9 @@
   ],
   "scoring_weights": [
     "mut_scoring_rebalance"
+  ],
+  "skill_registry": [
+    "mutate_skill_enabled",
+    "mutate_skill_description"
   ]
 }

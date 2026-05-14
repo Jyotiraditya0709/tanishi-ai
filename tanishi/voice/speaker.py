@@ -76,6 +76,24 @@ class TanishiSpeaker:
         self._detect_backend()
 
     def _detect_backend(self):
+        offline_env = os.getenv("TANISHI_OFFLINE", "").strip().lower() in {"1", "true", "on", "yes"}
+        if offline_env:
+            try:
+                import pyttsx3
+                self.backend = "pyttsx3"
+                self._pyttsx_engine = pyttsx3.init()
+                self._status("TTS: pyttsx3 (offline)")
+                return
+            except ImportError:
+                self.backend = "none"
+                print("[voice] pyttsx3 not installed — speech disabled")
+                self._status("No TTS available!")
+                return
+            except Exception:
+                self.backend = "none"
+                self._status("No TTS available!")
+                return
+
         if self.backend in ("auto", "openai") and self._openai_key:
             self.backend = "openai"
             if not self.config.voice_id:
@@ -99,6 +117,9 @@ class TanishiSpeaker:
             self._pyttsx_engine = pyttsx3.init()
             self._status("TTS: pyttsx3 (basic)")
             return
+        except ImportError:
+            print("[voice] pyttsx3 not installed — speech disabled")
+            pass
         except Exception:
             pass
 
@@ -371,3 +392,31 @@ class TanishiSpeaker:
     @staticmethod
     def list_voices() -> dict:
         return {**OPENAI_VOICES, **EDGE_VOICES}
+
+
+def speak(text: str, config=None):
+    """Convenience TTS wrapper with explicit offline behavior."""
+    if not (text or "").strip():
+        return
+    if config is not None and getattr(config, "offline_mode", False):
+        try:
+            import pyttsx3
+
+            engine = pyttsx3.init()
+            engine.say(text)
+            engine.runAndWait()
+            return
+        except ImportError:
+            print("[voice] pyttsx3 not installed — speech disabled")
+            return
+        except Exception:
+            return
+
+    async def _speak_once():
+        speaker = TanishiSpeaker()
+        await speaker.speak(text)
+
+    try:
+        asyncio.run(_speak_once())
+    except Exception:
+        return

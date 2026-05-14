@@ -71,6 +71,7 @@ EXPERIMENT_AREAS = [
     "tool_params",       # timeouts, retries, max tokens
     "mutation_rules",    # meta: evolve mutation_rules.json itself
     "scoring_weights",   # meta: rebalance quality/latency/reliability weights
+    "skill_registry",    # meta: tune skill manifests (enabled/description)
 ]
 
 # ---------------------------------------------------------------------------
@@ -102,6 +103,8 @@ MUTABLE_FILES = [
     "tanishi/voice/voice_config.py",
     "tanishi/autoresearch/mutation_rules.json",
     "tanishi/autoresearch/scoring_config.json",
+    "tanishi/skills/count_tokens/skill.json",
+    "tanishi/skills/summarize_clipboard/skill.json",
 ]
 
 def snapshot_state(experiment_id: str) -> Path:

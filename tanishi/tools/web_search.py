@@ -8,9 +8,13 @@ Tanishi can search the web, read pages, and stay informed.
 import re
 import json
 import httpx
+from difflib import SequenceMatcher
+from datetime import datetime, timedelta
+from pathlib import Path
 from urllib.parse import quote_plus, urljoin
 from typing import Optional
 
+from tanishi.core import get_config
 from tanishi.tools.registry import ToolDefinition
 
 
@@ -18,11 +22,74 @@ from tanishi.tools.registry import ToolDefinition
 # Search Engine (DuckDuckGo Lite — no API key required)
 # ============================================================
 
+CACHE_PATH = Path(__file__).resolve().parent / "search_cache.json"
+CACHE_MAX_ENTRIES = 500
+CACHE_TTL_DAYS = 7
+
+
+def _load_cache() -> dict:
+    if not CACHE_PATH.exists():
+        return {"entries": []}
+    try:
+        data = json.loads(CACHE_PATH.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and isinstance(data.get("entries"), list):
+            return data
+    except Exception:
+        pass
+    return {"entries": []}
+
+
+def _save_cache(entries: list[dict]) -> None:
+    entries = sorted(entries, key=lambda e: e.get("timestamp", ""), reverse=True)[:CACHE_MAX_ENTRIES]
+    CACHE_PATH.write_text(json.dumps({"entries": entries}, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _cache_put(query: str, result: str) -> None:
+    now = datetime.utcnow().isoformat()
+    cache = _load_cache()
+    entries = [e for e in cache.get("entries", []) if isinstance(e, dict)]
+    entries.append({"query": query, "result": result, "timestamp": now})
+    _save_cache(entries)
+
+
+def _cache_lookup_fuzzy(query: str) -> str | None:
+    cache = _load_cache()
+    entries = [e for e in cache.get("entries", []) if isinstance(e, dict)]
+    cutoff = datetime.utcnow() - timedelta(days=CACHE_TTL_DAYS)
+    q = query.strip().lower()
+    best = None
+    best_score = 0.0
+    for e in entries:
+        q2 = str(e.get("query", "")).strip().lower()
+        ts = str(e.get("timestamp", ""))
+        try:
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00")).replace(tzinfo=None)
+        except Exception:
+            continue
+        if dt < cutoff:
+            continue
+        if q == q2:
+            return str(e.get("result", ""))
+        score = SequenceMatcher(None, q, q2).ratio()
+        if score > best_score:
+            best_score = score
+            best = e
+    if best is not None and best_score >= 0.72:
+        return str(best.get("result", ""))
+    return None
+
 async def web_search(query: str, max_results: int = 5) -> str:
     """
     Search the web using DuckDuckGo.
     Returns formatted search results.
     """
+    cfg = get_config()
+    if getattr(cfg, "offline_mode", False):
+        cached = _cache_lookup_fuzzy(query)
+        if cached:
+            return f"[cached] {cached}"
+        return "[offline] Web search is unavailable in offline mode. I can only use what I already know or what's in memory."
+
     try:
         url = "https://lite.duckduckgo.com/lite/"
         headers = {
@@ -51,7 +118,9 @@ async def web_search(query: str, max_results: int = 5) -> str:
                 output_lines.append(f"   {r['snippet']}")
             output_lines.append("")
 
-        return "\n".join(output_lines)
+        out = "\n".join(output_lines)
+        _cache_put(query, out)
+        return out
 
     except Exception as e:
         return f"Search failed: {str(e)}. Even Google goes down sometimes."
