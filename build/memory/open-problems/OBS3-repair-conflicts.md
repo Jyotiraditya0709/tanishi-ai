@@ -10,3 +10,5 @@ unchanged and still `xfail(strict=True)`, and the code follows the human's rulin
 
 If the human would rather the test win on behaviour (not just on the assertion), the string case is easy to flip: wrap a lone
 `str` as `[tasks]` instead of raising. The rerun case cannot be satisfied by any sensible rule.
+
+**Status: resolved (2026-10-09).** Both conflicts are resolved by rewriting the two tests to the human decisions (a repeat row is refused with `ValueError`; a lone `str` for tasks or seeds is refused with `ValueError`). The code was not changed.

@@ -32,16 +32,15 @@ def test_false_positive_rate_under_null_is_low():
     assert hits / n <= 0.05, hits / n
 
 
-@pytest.mark.xfail(strict=True, reason="redteam OBS3 break; remove marker when fixed")
 def test_rerun_of_same_seed_is_one_sample_not_three(conn):
-    for score in (0.1, 0.9, 0.5):
-        record_run(conn, Run("a", "t", 1), score, baseline="a", candidate="b")
-        record_run(conn, Run("b", "t", 1), score + 0.3, baseline="a", candidate="b")
+    record_run(conn, Run("a", "t", 1), 0.1, baseline="a", candidate="b")
+    record_run(conn, Run("b", "t", 1), 0.4, baseline="a", candidate="b")
+    # a repeat of the same arm, task and seed is refused at once, not averaged away
+    with pytest.raises(ValueError):
+        record_run(conn, Run("a", "t", 1), 0.9, baseline="a", candidate="b")
     base, cand = seed_scores(conn, "a", "b")
     assert len(base) == 1 and len(cand) == 1
-    # ...and the retries must not silently vanish into a mean: 0.1/0.9/0.5 -> 0.5
-    with pytest.raises(ValueError):
-        record_run(conn, Run("a", "t", 1), 0.2, baseline="a", candidate="b")
+    assert base[0] == pytest.approx(0.1) and cand[0] == pytest.approx(0.4)
 
 
 def test_seed_missing_in_one_arm_is_not_misaligned(conn):
@@ -76,10 +75,11 @@ def test_bool_seed_rejected(conn):
         record_run(conn, Run("a", "t", True), 0.5, baseline="a", candidate="b")
 
 
-@pytest.mark.xfail(strict=True, reason="redteam OBS3 break; remove marker when fixed")
 def test_string_tasks_not_split_into_characters():
-    runs = interleave("a", "b", "abc", [1, 2, 3])
-    assert {r.task for r in runs} == {"abc"}
+    runs = None
+    with pytest.raises(ValueError):
+        runs = interleave("a", "b", "abc", [1, 2, 3])
+    assert runs is None
 
 
 def test_arm_names_that_stringify_equal_are_rejected():
