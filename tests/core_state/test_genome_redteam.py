@@ -21,10 +21,10 @@ REFUSALS = (ValueError, TypeError, sqlite3.Error)
 
 
 def _rec(version="v1", parent=None, **over):
-    args = dict(
-        version=version, parent=parent, genes_changed=["g"], compiler_version="c1", substrate_version="s1",
-        arena={"score": 1}, attribution={"g": 1.0}, mirror_id=None,
-    )
+    args = {
+        "version": version, "parent": parent, "genes_changed": ["g"], "compiler_version": "c1", "substrate_version": "s1",
+        "arena": {"score": 1}, "attribution": {"g": 1.0}, "mirror_id": None,
+    }
     args.update(over)
     record_version(**args)
 
@@ -122,12 +122,10 @@ def test_g7_sql_cannot_rewrite_or_delete_history():
     _rec("v1")
     conn = open_db()
     try:
-        with pytest.raises(sqlite3.DatabaseError):
-            with conn:
-                conn.execute("UPDATE genome SET record = '{}' WHERE version = 'v1'")
-        with pytest.raises(sqlite3.DatabaseError):
-            with conn:
-                conn.execute("DELETE FROM genome WHERE version = 'v1'")
+        with pytest.raises(sqlite3.DatabaseError), conn:
+            conn.execute("UPDATE genome SET record = '{}' WHERE version = 'v1'")
+        with pytest.raises(sqlite3.DatabaseError), conn:
+            conn.execute("DELETE FROM genome WHERE version = 'v1'")
     finally:
         conn.close()
 
@@ -139,9 +137,8 @@ def test_g7b_record_json_cannot_disagree_with_the_columns():
     _rec("v2", parent="v1")
     conn = open_db()
     try:
-        with pytest.raises(sqlite3.DatabaseError):
-            with conn:
-                conn.execute("UPDATE genome SET parent = NULL WHERE version = 'v2'")
+        with pytest.raises(sqlite3.DatabaseError), conn:
+            conn.execute("UPDATE genome SET parent = NULL WHERE version = 'v2'")
     finally:
         conn.close()
 
