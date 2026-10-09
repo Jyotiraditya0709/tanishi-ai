@@ -10,8 +10,10 @@ This loop continues until Claude has a final text response.
 
 import asyncio
 import json
+import logging
 import re
 import threading
+import uuid
 import warnings
 import httpx
 import anthropic
@@ -20,9 +22,20 @@ from dataclasses import dataclass, field
 
 from tanishi.config import routing as routing_cfg
 from tanishi.core import get_config
+from tanishi.core_state.events import emit, task_scope
 from tanishi.core.personality import get_system_prompt
 from tanishi.memory.manager import MemoryManager
 from tanishi.tools.registry import ToolRegistry, ToolResult
+
+logger = logging.getLogger(__name__)
+
+
+def _record(kind: str, payload: dict, session_id: str | None) -> None:
+    """Emit an event; a broken log must not break the conversation, which is not an action (decision 0008)."""
+    try:
+        emit(kind, payload, session_id=session_id)
+    except Exception as e:  # noqa: BLE001 - never log the payload: it is the user's own text
+        logger.warning("could not record %s event: %s", kind, type(e).__name__)
 
 
 @dataclass
@@ -42,6 +55,11 @@ class BrainResponse:
     cached: bool = False
     tools_used: list[str] = field(default_factory=list)
     canvas_frames: list[dict] = field(default_factory=list)
+    error: str = ""  # set when the model call failed and `content` is only an apology
+
+    @property
+    def failed(self) -> bool:
+        return bool(self.error) or (self.model_used or "").endswith("(error)")
 
 
 CANVAS_BLOCK_RE = re.compile(
@@ -217,7 +235,36 @@ class TanishiBrain:
         1. Send message + tools to Claude
         2. If Claude returns tool_use -> execute tool -> send result back
         3. Repeat until Claude returns a text response
+
+        The task is recorded in the Core State event log: task_start before, task_end after,
+        even when it fails. Both carry one task_id, and tool events inside the task carry it too.
         """
+        task_id = uuid.uuid4().hex
+        session_id = getattr(self, "_active_session_id", None)
+        session_id = session_id if isinstance(session_id, str) else None
+        _record("task_start", {"task_id": task_id, "input": user_input, "mood": mood}, session_id)
+        response: BrainResponse | None = None
+        error = ""
+        try:
+            with task_scope(task_id, session_id):
+                response = await self._think(user_input, mood, style, extra_context)
+            return response
+        except BaseException as e:
+            error = f"{type(e).__name__}: {e}"
+            raise
+        finally:
+            # _think turns some model errors into a normal-looking reply; those are failures too.
+            if response is not None and response.failed and not error:
+                error = response.error or f"model call failed ({response.model_used})"
+            _record("task_end", {
+                "task_id": task_id,
+                "success": response is not None and not response.failed,
+                "model_used": response.model_used if response else None,
+                "tools_used": list(response.tools_used) if response else [],
+                "error": error,
+            }, session_id)
+
+    async def _think(self, user_input: str, mood: str, style: str, extra_context: str) -> BrainResponse:
         model = self._select_model(user_input)
 
         skill_block = ""
@@ -408,6 +455,7 @@ class TanishiBrain:
             return BrainResponse(
                 content=f"*sighs* Claude's having a moment. Error: {e.message}",
                 model_used="claude (error)",
+                error=f"{type(e).__name__}: {e.message}",
             )
 
     async def _think_ollama(self, system_prompt: str, messages: list[dict]) -> BrainResponse:
@@ -433,6 +481,7 @@ class TanishiBrain:
             return BrainResponse(
                 content=f"Local brain is offline. Error: {str(e)}",
                 model_used="ollama (error)",
+                error=f"{type(e).__name__}: {e}",
             )
 
     async def stream_think(

@@ -43,12 +43,12 @@ SPEC_PK = {
 }  # every other table: ["id"]
 
 # column kinds for generated rows (after the key column):
-# t=text, r=real, c=confidence in [0, 1], i=int, j=json object, n=NULL (reference columns: targets are not in the spec)
+# t=text, o=goal owner ('user' or 'tanishi'), r=real, c=confidence in [0, 1], i=int, j=json object, n=NULL (reference columns: targets are not in the spec)
 KINDS = {
     "events": "ttttjtt",
     "beliefs": "tttctttt",
     "evidence": "nntt",
-    "goals": "nttrtt",
+    "goals": "notrtt",
     "predictions": "ttjcjtr",
     "rules": "ttic",
     "capabilities": "tttrrt",
@@ -140,12 +140,12 @@ def test_open_db_default_is_home_tanishi_core_state_db(home):
     assert (home / ".tanishi" / "core_state.db").exists()
 
 
-def test_open_db_twice_same_file_both_usable(tmp_path):
+def test_open_db_twice_same_file_both_usable(tmp_path, latest_version):
     p = str(tmp_path / "two.db")
     a, b = open_db(p), open_db(p)
     try:
         migrate(a)
-        assert migrate(b) == 1
+        assert migrate(b) == latest_version
         a.execute("INSERT INTO genes(id, description, introduced_in) VALUES ('g','d','v')")
         a.commit()
         # WAL: a second connection sees committed data
@@ -196,8 +196,8 @@ def test_foreign_keys_on_for_reopened_connection(tmp_path):
 # ---------------------------------------------------------------- migrate: first run
 
 
-def test_migrate_empty_file_returns_one(conn):
-    assert migrate(conn) == 1
+def test_migrate_empty_file_returns_latest_version(conn, latest_version):
+    assert migrate(conn) == latest_version
 
 
 def test_migrate_creates_every_table(conn):
@@ -225,10 +225,11 @@ def test_table_primary_key(conn, table):
     assert pk == SPEC_PK.get(table, ["id"])
 
 
-def test_records_version_one_in_schema_version(conn):
+def test_records_version_one_in_schema_version(conn, latest_version):
     migrate(conn)
     rows = versions(conn)
-    assert [r[0] for r in rows] == [1]
+    assert [r[0] for r in rows] == list(range(1, latest_version + 1))
+    assert rows[0][0] == 1
     assert rows[0][1]  # applied_at is filled in
 
 
@@ -253,9 +254,9 @@ def test_primary_keys_are_enforced(conn):
 # ---------------------------------------------------------------- migrate: idempotence
 
 
-def test_migrate_twice_returns_one_both_times(conn):
-    assert migrate(conn) == 1
-    assert migrate(conn) == 1
+def test_migrate_twice_returns_latest_both_times(conn, latest_version):
+    assert migrate(conn) == latest_version
+    assert migrate(conn) == latest_version
 
 
 def test_migrate_twice_changes_nothing(conn):
@@ -277,7 +278,7 @@ def test_migrate_again_keeps_existing_data(conn):
     assert conn.execute("SELECT support, confidence FROM rules").fetchall() == [(3, 0.5)]
 
 
-def test_migrate_on_reopened_file_is_noop(tmp_path):
+def test_migrate_on_reopened_file_is_noop(tmp_path, latest_version):
     p = str(tmp_path / "re.db")
     c = open_db(p)
     migrate(c)
@@ -285,23 +286,23 @@ def test_migrate_on_reopened_file_is_noop(tmp_path):
     c.close()
     c2 = open_db(p)
     try:
-        assert migrate(c2) == 1
+        assert migrate(c2) == latest_version
         assert (schema_dump(c2), versions(c2)) == snap
     finally:
         c2.close()
 
 
 @pytest.mark.parametrize("seed", range(5))
-def test_property_repeated_migrate_is_idempotent(tmp_path, seed):
+def test_property_repeated_migrate_is_idempotent(tmp_path, seed, latest_version):
     rng = random.Random(seed)
     p = str(tmp_path / f"p{seed}.db")
     snap = None
     for _ in range(rng.randint(2, 6)):
         c = open_db(p)
         try:
-            assert migrate(c) == 1
+            assert migrate(c) == latest_version
             if rng.random() < 0.5:
-                assert migrate(c) == 1
+                assert migrate(c) == latest_version
             cur = (schema_dump(c), versions(c))
             snap = snap or cur
             assert cur == snap
@@ -339,14 +340,14 @@ def test_failed_migration_rolls_back_completely(conn, action, target):
     (sqlite3.SQLITE_CREATE_TABLE, "substrate_state"),
     (sqlite3.SQLITE_INSERT, "schema_version"),
 ])
-def test_migrate_succeeds_after_a_rolled_back_attempt(conn, action, target):
+def test_migrate_succeeds_after_a_rolled_back_attempt(conn, action, target, latest_version):
     conn.set_authorizer(_deny(action, target))
     with pytest.raises(sqlite3.Error):
         migrate(conn)
     conn.set_authorizer(None)
-    assert migrate(conn) == 1
+    assert migrate(conn) == latest_version
     assert set(SPEC_COLUMNS) <= tables(conn)
-    assert [r[0] for r in versions(conn)] == [1]
+    assert [r[0] for r in versions(conn)] == list(range(1, latest_version + 1))
 
 
 def test_failed_migration_leaves_no_version_row_on_disk(tmp_path):
@@ -425,6 +426,8 @@ def _value(rng, kind, n):
         return f"{rng.choice('abcxyz')}-{n}-{rng.randint(0, 10**6)}"
     if kind == "n":
         return None
+    if kind == "o":
+        return rng.choice(["user", "tanishi"])
     if kind == "r":
         return rng.random() * rng.choice([1, 100, 1e6])
     if kind == "c":
@@ -483,7 +486,7 @@ def test_confidence_outside_unit_interval_is_refused(conn, table, cols, row, bad
         conn.execute(f"INSERT INTO {table}({cols}) VALUES ({','.join('?' * len(row))})", row)
 
 
-def test_data_survives_close_and_reopen(tmp_path):
+def test_data_survives_close_and_reopen(tmp_path, latest_version):
     p = str(tmp_path / "d.db")
     c = open_db(p)
     migrate(c)
@@ -493,7 +496,7 @@ def test_data_survives_close_and_reopen(tmp_path):
     c.close()
     c2 = open_db(p)
     try:
-        assert migrate(c2) == 1
+        assert migrate(c2) == latest_version
         row = c2.execute("SELECT version, parent, record FROM genome").fetchone()
         assert (row[0], row[1], json.loads(row[2])) == ("v1", None, {"a": 1})
     finally:
