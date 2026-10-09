@@ -25,10 +25,11 @@ def _raw():
 
 def test_secret_in_task_id_is_refused():
     """R3: a task_id that redact() would change is invalid input: save() raises and stores nothing."""
+    save(_state())  # an ordinary save first, so the table exists for _raw()
     with pytest.raises(ValueError):
         save(_state(task_id=f"job-{KEY}"))
     assert KEY not in _raw()
-    assert json.loads(_raw()) == []
+    assert [row[0] for row in json.loads(_raw())] == ["t"]
 
 
 def test_r2_container_under_secret_key_keeps_its_secret():
