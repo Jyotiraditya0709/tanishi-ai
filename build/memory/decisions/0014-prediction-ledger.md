@@ -21,5 +21,9 @@ Date: 2026-10-09. Decided by: the CS5 builder, within the spec and the readings 
    function in `predictions.py` whose name contains `unresolved`, `stale` or `overdue`.
 8. **Tool predictions.** `about = "tool:<name>"`, `expected = {"success": True, "latency_ms": <median of the last 50
    latencies, or None>}`, `confidence = (successes + 0.75·4) / (n + 4)` over the last 50 resolved calls of that tool.
-   Resolved with `{"success", "latency_ms"}` on every path: success, failure, not run because the tool_call event
-   could not be written, cancelled. The ledger **fails open** in `execute()`: it only learns, it is not a gate.
+   Resolved with `{"success", "latency_ms"}` only when the handler ran to an outcome (success, error, timeout).
+   *Changed in the CS5 repair (red team R1-R3):* a call that never reached the tool is not evidence about the tool.
+   An unknown name, or a tool that needs approval with no approval callback, is not predicted at all. A user denial,
+   a raising approval callback, a missing `tool_call` event or a cancellation leaves the prediction unscored
+   (unresolved; the stale helper lists it after 24 h). The ledger **fails open** in `execute()`: it only learns,
+   it is not a gate.

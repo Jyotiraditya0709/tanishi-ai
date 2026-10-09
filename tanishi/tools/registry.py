@@ -15,6 +15,7 @@ import asyncio
 import json
 import inspect
 import logging
+import time
 import uuid
 from typing import Any, Callable, Optional
 from dataclasses import dataclass, field
@@ -162,28 +163,35 @@ class ToolRegistry:
         carry the same call_id, and the task_id and session_id of the current task.
         Fails closed: if the tool_call event cannot be written, the tool does not run.
         Before the tool_call event, a prediction (expected success and latency) goes into the
-        prediction ledger; it is resolved with what happened, whatever happened (node CS5).
+        prediction ledger (node CS5). It is scored only when the tool's handler ran to an outcome: a call
+        refused before the tool ran (unknown name, approval missing or denied, no tool_call event) or
+        cancelled says nothing about the tool. An unknown name, or a tool that needs approval when there is
+        no approval callback, is not predicted at all; the other refused calls leave the prediction unscored.
         """
         task_id, session_id = current_task()
         ids = {"tool": tool_name, "call_id": uuid.uuid4().hex, "task_id": task_id}
-        prediction_id = _predict(tool_name)
+        tool = self.tools.get(tool_name)
+        prediction_id = None
+        if tool is not None and not (tool.requires_approval and self._approval_callback is None):
+            prediction_id = _predict(tool_name)
         try:
             emit("tool_call", {**ids, "input": _jsonable(tool_input)}, session_id=session_id)
         except Exception as e:  # noqa: BLE001 - never log the payload: it may hold what we failed to redact
             logger.warning("tool %s not run, its tool_call event could not be recorded: %s",
                            tool_name, type(e).__name__)
-            _resolve(prediction_id, False, None)
             return ToolResult(success=False, output="", tool_name=tool_name, error=EVENT_LOG_UNAVAILABLE)
         result: ToolResult | None = None
         try:
-            result = await self._execute(tool_name, tool_input)
+            start = time.time()
+            result = await self._refuse(tool_name, tool, tool_input, start)
+            if result is None:
+                result = await self._run(tool, tool_input, start)
+                _resolve(prediction_id, result.success, round(result.execution_time_ms, 1))
             return result
         finally:
             if result is None:  # cancelled, or the approval callback raised
-                _resolve(prediction_id, False, None)
                 _record("tool_result", {**ids, "success": False, "error": "did not finish"}, session_id)
             else:
-                _resolve(prediction_id, result.success, round(result.execution_time_ms, 1))
                 _record("tool_result", {
                     **ids,
                     "success": result.success,
@@ -192,19 +200,16 @@ class ToolRegistry:
                     "ms": round(result.execution_time_ms, 1),
                 }, session_id)
 
-    async def _execute(self, tool_name: str, tool_input: dict) -> ToolResult:
-        import time
-        start = time.time()
-
-        if tool_name not in self.tools:
+    async def _refuse(self, tool_name: str, tool: ToolDefinition | None, tool_input: dict,
+                      start: float) -> ToolResult | None:
+        """The refusal for a call that must not reach the tool (unknown name, approval missing or denied), else None."""
+        if tool is None:
             return ToolResult(
                 success=False,
                 output="",
                 tool_name=tool_name,
                 error=f"Unknown tool: {tool_name}. I must be dreaming about capabilities I don't have yet.",
             )
-
-        tool = self.tools[tool_name]
 
         # Check if approval needed (fail-closed: no callback => deny)
         if tool.requires_approval:
@@ -233,7 +238,11 @@ class ToolRegistry:
                     execution_time_ms=elapsed,
                     error=f"'{tool_name}' was denied.",
                 )
+        return None
 
+    async def _run(self, tool: ToolDefinition, tool_input: dict, start: float) -> ToolResult:
+        """Run the handler, with the registry's timeout and retries. The call has passed _refuse()."""
+        tool_name = tool.name
         max_attempts = 1 + tool_cfg.TOOL_RETRIES
         last_error = ""
         timeout_s = _registry_timeout_seconds(tool)

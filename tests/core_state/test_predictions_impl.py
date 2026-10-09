@@ -155,7 +155,7 @@ def test_registry_still_runs_the_tool_when_the_ledger_is_down(monkeypatch):
     assert asyncio.run(reg.execute("t", {})).success
 
 
-def test_registry_resolves_a_cancelled_call_as_a_failure():
+def test_registry_leaves_a_cancelled_call_unscored():
     from tanishi.tools.registry import ToolDefinition, ToolRegistry
 
     async def slow():
@@ -174,7 +174,35 @@ def test_registry_resolves_a_cancelled_call_as_a_failure():
 
     asyncio.run(run())
     (row,) = _rows()
-    assert json.loads(row[3])["success"] is False and P.unresolved_older_than(0) == []
+    assert row[3] is None and row[5] is None and P.calibration("tool:")["n"] == 0
+    assert [r["id"] for r in P.unresolved_older_than(0)] == [row[0]]
+
+
+def test_registry_leaves_a_denied_call_unscored():
+    from tanishi.tools.registry import ToolDefinition, ToolRegistry
+
+    reg = ToolRegistry()
+    reg.register(ToolDefinition(name="t", description="t", input_schema={"type": "object"}, handler=lambda: "ok",
+                                requires_approval=True))
+    reg.set_approval_callback(lambda name, args: False)
+    assert not asyncio.run(reg.execute("t", {})).success
+    assert [(r[3], r[5]) for r in _rows()] == [(None, None)]
+    reg.set_approval_callback(lambda name, args: True)
+    assert asyncio.run(reg.execute("t", {})).success
+    assert P.calibration("tool:t")["n"] == 1
+
+
+def test_registry_scores_a_handler_that_fails():
+    from tanishi.tools.registry import ToolDefinition, ToolRegistry
+
+    def broken():
+        raise RuntimeError("down")
+
+    reg = ToolRegistry()
+    reg.register(ToolDefinition(name="t", description="t", input_schema={"type": "object"}, handler=broken))
+    assert not asyncio.run(reg.execute("t", {})).success
+    (row,) = _rows()
+    assert json.loads(row[3])["success"] is False and row[5] is not None
 
 
 # ---------------------------------------------------------------- evaluation: does the forecaster learn?
