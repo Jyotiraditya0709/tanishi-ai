@@ -40,7 +40,7 @@ data/*.sqlite
 tanishi/tools/search_cache.json
 proactive_state.json
 autoresearch_results/snapshots/
-runner.*
+/runner.*
 .agents/
 _bmad/
 skills-lock.json
