@@ -1,5 +1,6 @@
 """AR1 exam: the task format. YAML fields: id, family, tier, prompt, setup (optional), verifier, timeout_s, tags."""
 import pytest
+
 from tanishi.arena import task as task_mod
 from tanishi.arena.task import Task
 
