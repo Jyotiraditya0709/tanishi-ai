@@ -67,7 +67,6 @@ def test_r3_destination_inside_the_home_does_not_feed_the_next_bundle(home, tmp_
     assert max(sizes) < 2 * min(sizes)  # today each bundle holds all the earlier ones
 
 
-@pytest.mark.xfail(strict=True, reason="R4: an answerer that dumps all memory for every question passes")
 def test_r4_dumping_all_memory_does_not_pass_continuity(home, tmp_path):
     seed_history(home)
     qf = tmp_path / "q.json"
@@ -79,7 +78,6 @@ def test_r4_dumping_all_memory_does_not_pass_continuity(home, tmp_path):
     assert not ct.run(qf, home, lambda q, h: dump).passed
 
 
-@pytest.mark.xfail(strict=True, reason="R5: ten copies of one question pass by knowing one fact")
 def test_r5_duplicate_questions_are_refused(tmp_path):
     qf = tmp_path / "q.json"
     qf.write_text(json.dumps([{"question": "What is my name?", "expected": "Tanishi"}] * 10))
@@ -87,7 +85,6 @@ def test_r5_duplicate_questions_are_refused(tmp_path):
         ct.load_questions(qf)
 
 
-@pytest.mark.xfail(strict=True, reason="R6: an expected answer that appears in its own question lets an echo pass")
 def test_r6_expected_inside_the_question_is_refused(tmp_path):
     qs = [{"question": f"Is the code word {MARKER}-{i} still yours?", "expected": f"{MARKER}-{i}"} for i in range(10)]
     qf = tmp_path / "q.json"
@@ -95,7 +92,6 @@ def test_r6_expected_inside_the_question_is_refused(tmp_path):
     assert not ct.run(qf, tmp_path, lambda q, h: q).passed  # empty home, echo answerer
 
 
-@pytest.mark.xfail(strict=True, reason="R7: short expected answers match inside unrelated words ('no' in 'know')")
 def test_r7_expected_matches_whole_words_only(tmp_path):
     qs = [{"question": f"Question {i}?", "expected": "no"} for i in range(10)]
     qf = tmp_path / "q.json"
