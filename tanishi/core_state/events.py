@@ -51,12 +51,14 @@ _SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("jwt", re.compile(r"(?<![A-Za-z0-9_\-])eyJ[A-Za-z0-9_\-]{4,}\.[A-Za-z0-9_\-]{4,}\.[A-Za-z0-9_\-]+")),
 )
 # Secrets inside free text where the name, not the shape, gives them away: the value goes, the name stays.
-# Each pattern starts on a literal (a secret word, "authorization", "://"), so a long hostile string
-# cannot make it backtrack quadratically.
+# Each pattern scans any one stretch of text a bounded number of times, so a long hostile string cannot make
+# it quadratic (red-team SUB1 R1: `"password" * 40000` took minutes when every secret word started a match).
 _ASSIGNED_SECRETS: tuple[re.Pattern[str], ...] = (
     # `SECRET_KEY=...`, `AWS_SECRET_ACCESS_KEY=...`, `"password": "..."`, `?token=...`: any value length.
-    re.compile(r"(?i)((?:api[_-]?key|secret|password|passwd|token|private[_-]?key|credential)[\w-]*"
-               r"['\"]?\s*[:=]\s*['\"]?)([^\s'\",;&]+)"),
+    # A match starts only where a name starts, the secret word is found by an (atomic) lookahead, and the name
+    # is eaten possessively, so each name is read once whatever it repeats.
+    re.compile(r"(?i)((?<![\w-])(?=[\w-]*?(?:api[_-]?key|secret|password|passwd|token|private[_-]?key|credential))"
+               r"[\w-]*+['\"]?\s*[:=]\s*['\"]?)([^\s'\",;&]+)"),
     # `Authorization: Basic ...` (or Bearer, Digest, Token): the credential after the scheme.
     re.compile(r"(?i)(authorization['\"]?\s*[:=]\s*['\"]?(?:(?:basic|bearer|digest|token|negotiate)\s+)?)"
                r"([^\s'\",;]+)"),
