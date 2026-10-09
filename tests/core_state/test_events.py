@@ -24,9 +24,9 @@ import threading
 import types
 
 import pytest
-from tanishi.core_state.events import emit, iter_events, verify_chain
 
 from tanishi.core_state import migrate, open_db
+from tanishi.core_state.events import emit, iter_events, verify_chain
 
 COLUMNS = ("id", "ts", "kind", "actor", "session_id", "payload", "prev_hash", "hash")
 
