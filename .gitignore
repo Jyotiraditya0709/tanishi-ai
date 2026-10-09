@@ -41,3 +41,6 @@ tanishi/tools/search_cache.json
 proactive_state.json
 autoresearch_results/snapshots/
 runner.*
+.agents/
+_bmad/
+skills-lock.json
