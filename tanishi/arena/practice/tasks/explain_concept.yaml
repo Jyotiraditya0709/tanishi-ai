@@ -1,0 +1,7 @@
+id: practice.explain_concept
+family: conversation
+tier: practice
+prompt: explain RAG in two sentences
+verifier: tanishi.arena.practice.legacy.explain_concept
+timeout_s: 30
+tags: [practice, legacy]

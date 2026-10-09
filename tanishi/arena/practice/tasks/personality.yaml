@@ -1,0 +1,7 @@
+id: practice.personality
+family: personality
+tier: practice
+prompt: I just finished a really long debugging session, exhausted
+verifier: tanishi.arena.practice.legacy.personality
+timeout_s: 30
+tags: [practice, legacy, judge:llm]

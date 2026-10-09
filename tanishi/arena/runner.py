@@ -44,7 +44,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from tanishi.arena.task import Task, TaskBrief
-from tanishi.arena.verifiers import Verdict, normalize, problem_with, resolve
+from tanishi.arena.verifiers import (
+    CandidateFault,
+    Verdict,
+    normalize,
+    problem_with,
+    resolve,
+)
 from tanishi.core_state import migrate, open_db
 
 STARTUP_TIMEOUT_S = 60.0  # starting Python and unpickling the payload; not charged to the task
@@ -148,6 +154,7 @@ def run(
                     "task_id": task.id,
                     "family": task.family,
                     "tier": task.tier,
+                    "tags": list(task.tags),  # so readers of the rows can leave out judge:llm tasks (RT-AR2-8)
                     "reason": reason,
                     "failure_kind": kind,
                     "error": outcome.get("error"),
@@ -406,6 +413,8 @@ def _read_verifier_result(msg: dict) -> dict:
         return _zero("infra", "verifier process failed before the verifier ran", error=msg.get("error"))
     verdict = normalize((msg.get("score"), msg.get("reason")))
     bad = bool(msg.get("malformed")) or problem_with((msg.get("score"), msg.get("reason"))) is not None
+    if msg.get("candidate_fault") is True and not bad:
+        return _zero("candidate", verdict.reason)
     return {"score": verdict.score, "reason": verdict.reason, "failure_kind": "verifier" if bad else None,
             "error": None}
 
@@ -462,7 +471,8 @@ def _verifier_stage(task: Task, output: str) -> dict:
     except BaseException as e:  # noqa: BLE001 - a verifier that raises or exits gives no credit
         return {"failure": "crashed", "error": type(e).__name__}
     verdict = normalize(raw)
-    return {"score": verdict.score, "reason": verdict.reason[:MAX_REASON], "malformed": problem_with(raw) is not None}
+    return {"score": verdict.score, "reason": verdict.reason[:MAX_REASON], "malformed": problem_with(raw) is not None,
+            "candidate_fault": isinstance(raw, CandidateFault)}
 
 
 __all__ = ["Attempt", "Executor", "RunResult", "SeedResult", "Verdict", "run", "task_set_id"]

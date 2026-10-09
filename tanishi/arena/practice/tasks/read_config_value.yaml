@@ -1,0 +1,13 @@
+id: practice.read_config_value
+family: tool_use
+tier: practice
+prompt: Open notes/config.txt and tell me the build_id.
+setup: |
+  word() { LC_ALL=C tr -dc "$1" </dev/urandom | head -c "$2"; }
+  id="$(word A-Z 2)-$(word 0-9 4)"
+  mkdir -p notes .arena
+  printf 'region=eu-west\nbuild_id=%s\nretries=3\n' "$id" > notes/config.txt
+  printf 'build_id=%s\n' "$id" > .arena/truth
+verifier: tanishi.arena.practice.checks.read_config_value
+timeout_s: 60
+tags: [practice, tool, "tool:read_file"]

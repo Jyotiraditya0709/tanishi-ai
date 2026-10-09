@@ -1,0 +1,7 @@
+id: practice.greeting
+family: conversation
+tier: practice
+prompt: hey tanishi how's it going
+verifier: tanishi.arena.practice.legacy.greeting
+timeout_s: 30
+tags: [practice, legacy, judge:llm]

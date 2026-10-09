@@ -1,0 +1,25 @@
+id: practice.count_matching_files
+family: tool_use
+tier: practice
+prompt: How many .log files are in the logs/ folder? Reply with just the number.
+setup: |
+  word() { LC_ALL=C tr -dc "$1" </dev/urandom | head -c "$2"; }
+  n=$(( $(od -An -N2 -tu2 </dev/urandom) % 15 + 6 ))
+  m=$(( $(od -An -N2 -tu2 </dev/urandom) % 5 + 2 ))
+  mkdir -p logs .arena
+  printf 'count=%s\n' "$n" > .arena/truth
+  i=0
+  while [ "$i" -lt "$n" ]; do
+    f="run$i-$(word a-z 5).log"
+    : > "logs/$f"
+    printf 'log=%s\n' "$f" >> .arena/truth
+    i=$((i + 1))
+  done
+  i=0
+  while [ "$i" -lt "$m" ]; do
+    : > "logs/note$i-$(word a-z 5).txt"
+    i=$((i + 1))
+  done
+verifier: tanishi.arena.practice.checks.count_matching_files
+timeout_s: 60
+tags: [practice, tool, "tool:list_directory"]

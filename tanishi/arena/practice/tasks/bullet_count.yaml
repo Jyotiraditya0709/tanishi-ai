@@ -1,0 +1,9 @@
+id: practice.bullet_count
+family: instruction
+tier: practice
+prompt: >-
+  List the benefits of automated tests as exactly 3 bullet points. Start each line with '- ' and keep each bullet to
+  12 words or fewer. No other text.
+verifier: tanishi.arena.practice.checks.bullet_count
+timeout_s: 30
+tags: [practice]

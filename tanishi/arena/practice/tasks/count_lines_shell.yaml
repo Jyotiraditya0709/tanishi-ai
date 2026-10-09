@@ -1,0 +1,12 @@
+id: practice.count_lines_shell
+family: tool_use
+tier: practice
+prompt: Use the shell to count the lines in data.csv and tell me the number.
+setup: |
+  n=$(( $(od -An -N2 -tu2 </dev/urandom) % 53 + 8 ))
+  seq 1 "$n" | sed 's/^/row,/' > data.csv
+  mkdir -p .arena
+  printf 'lines=%s\n' "$n" > .arena/truth
+verifier: tanishi.arena.practice.checks.count_lines_shell
+timeout_s: 60
+tags: [practice, tool, "tool:run_command"]

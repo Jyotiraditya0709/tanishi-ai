@@ -1,0 +1,9 @@
+id: practice.json_only_reply
+family: instruction
+tier: practice
+prompt: >-
+  Reply with only a JSON object with the keys "word" (the string "verification") and "vowels" (an integer: how many
+  vowels that word has). No other text.
+verifier: tanishi.arena.practice.checks.json_only_reply
+timeout_s: 30
+tags: [practice]

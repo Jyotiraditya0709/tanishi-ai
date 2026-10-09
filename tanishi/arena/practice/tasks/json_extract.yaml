@@ -1,0 +1,9 @@
+id: practice.json_extract
+family: reasoning
+tier: practice
+prompt: |-
+  Here is a config: {"service": {"name": "relay", "limits": {"burst": 40, "sustained": 12}}, "tags": ["a", "b"]}
+  What is the value of service.limits.sustained? Reply with just the number.
+verifier: tanishi.arena.practice.checks.json_extract
+timeout_s: 30
+tags: [practice]

@@ -1,0 +1,7 @@
+id: practice.unit_convert
+family: reasoning
+tier: practice
+prompt: Convert 26.2 miles to kilometres. Round to one decimal place and reply with just the number.
+verifier: tanishi.arena.practice.checks.unit_convert
+timeout_s: 30
+tags: [practice]

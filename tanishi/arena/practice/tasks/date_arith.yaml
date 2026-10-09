@@ -1,0 +1,7 @@
+id: practice.date_arith
+family: reasoning
+tier: practice
+prompt: What is the date 45 days after 2024-01-15? Reply as YYYY-MM-DD and nothing else.
+verifier: tanishi.arena.practice.checks.date_arith
+timeout_s: 30
+tags: [practice]

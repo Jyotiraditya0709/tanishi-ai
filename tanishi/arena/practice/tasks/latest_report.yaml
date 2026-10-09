@@ -1,0 +1,20 @@
+id: practice.latest_report
+family: tool_use
+tier: practice
+prompt: Look in reports/ and tell me the code word from the most recent month's report.
+setup: |
+  word() { LC_ALL=C tr -dc "$1" </dev/urandom | head -c "$2"; }
+  s=$(( $(od -An -N2 -tu2 </dev/urandom) % 80 ))
+  mkdir -p reports .arena
+  : > .arena/truth
+  for step in 1 2 3; do
+    s=$(( s + $(od -An -N1 -tu1 </dev/urandom) % 5 + 1 ))
+    month="$(( 2020 + s / 12 ))-$(printf '%02d' $(( s % 12 + 1 )))"
+    code="$(word A-Z 6)"
+    printf 'code: %s\n' "$code" > "reports/$month.txt"
+    if [ "$step" -eq 3 ]; then key=newest; else key=older; fi
+    printf '%s=%s\n' "$key" "$code" >> .arena/truth
+  done
+verifier: tanishi.arena.practice.checks.latest_report
+timeout_s: 60
+tags: [practice, tool, "tool:list_directory", "tool:read_file"]

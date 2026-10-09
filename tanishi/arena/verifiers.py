@@ -25,6 +25,20 @@ class Verdict(NamedTuple):
     reason: str
 
 
+class CandidateFault(Verdict):
+    """A 0 that is the candidate's fault, not the verifier's: its code or query ran past a limit the verifier sets.
+
+    It is still a (score, reason) pair, so callers that only read those see a plain 0. The runner records it with
+    failure_kind "candidate" instead of a scored 0. Build it with `candidate_fault(reason)`.
+    """
+
+    __slots__ = ()
+
+
+def candidate_fault(reason: str) -> CandidateFault:
+    return CandidateFault(0.0, reason)
+
+
 Verifier = Callable[..., tuple[float, str]]
 
 

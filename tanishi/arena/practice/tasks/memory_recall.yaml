@@ -1,0 +1,14 @@
+id: practice.memory_recall
+family: memory
+tier: practice
+prompt: what is my favorite color?
+setup: |
+  set -- red blue green yellow orange purple pink brown black white grey teal cyan magenta maroon navy olive lime \
+    indigo violet gold silver beige coral
+  shift $(( $(od -An -N2 -tu2 </dev/urandom) % $# ))
+  mkdir -p .tanishi/memory .arena
+  printf '# What the user told me\n\n- Favorite color: %s\n' "$1" > .tanishi/memory/user.md
+  printf 'color=%s\n' "$1" > .arena/truth
+verifier: tanishi.arena.practice.legacy.memory_recall
+timeout_s: 30
+tags: [practice, legacy]

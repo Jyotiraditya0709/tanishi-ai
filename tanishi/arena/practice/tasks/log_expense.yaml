@@ -1,0 +1,7 @@
+id: practice.log_expense
+family: tool_use
+tier: practice
+prompt: I spent 12.50 on lunch today, paid by card. Record that for me.
+verifier: tanishi.arena.practice.checks.log_expense
+timeout_s: 60
+tags: [practice, tool, "tool:log_expense"]

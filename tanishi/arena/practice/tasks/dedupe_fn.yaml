@@ -1,0 +1,10 @@
+id: practice.dedupe_fn
+family: coding
+tier: practice
+prompt: >-
+  Write a Python function dedupe(items) that returns a new list with duplicates removed, keeping the first occurrence
+  of each item in its original order. It must not change its input and must stay fast for long lists. Reply with only
+  the code.
+verifier: tanishi.arena.practice.checks.dedupe_fn
+timeout_s: 60
+tags: [practice, code]
