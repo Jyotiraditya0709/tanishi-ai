@@ -43,3 +43,6 @@ version = {attr = "tanishi.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["tanishi*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
