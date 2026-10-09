@@ -9,7 +9,8 @@ Only plain JSON goes in: dicts with str keys, lists, str, int, finite float, boo
 TypeError, a bad value (NaN, a blank task id, a cycle) raises ValueError.
 
 Secrets never reach the db: text that `events.redact()` would change (an API key, `PASSWORD=...`) is stored
-redacted, so that one string does not come back unchanged. Everything else round-trips exactly.
+redacted, so that one string does not come back unchanged. Everything else round-trips exactly. A task id is the
+row's key and cannot be redacted, so one that looks like a secret raises ValueError instead.
 """
 from __future__ import annotations
 
@@ -148,8 +149,9 @@ def _validate_shape(state: TaskState) -> None:
     _check_text(state.task_id, "task_id")
     if not state.task_id.strip():
         raise ValueError("task_id must not be blank")
-    # A task id that looks like a secret is stored as given (red-team R3, still open): refusing it fails the
-    # red-team test, which wants save() to succeed (open-problems/SUB1-repair-conflicts.md).
+    # The id is the row's key, so it cannot be stored redacted: one that looks like a secret is refused (R3).
+    if _without_secrets(state.task_id) != state.task_id:
+        raise ValueError("task_id looks like a secret; choose another id")
     _check_type(state.working, dict, "working")
     _check_json(state.working, "working")
     _check_type(state.plan, Plan, "plan")

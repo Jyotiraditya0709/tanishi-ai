@@ -28,8 +28,11 @@ Date: 2026-10-09. Decided by: the SUB1 implementer, adopting the exam's assumpti
    redacted, and any value but `None` and `""` under a secret-named key (dict and list included) is written as
    `"[REDACTED]"`, the same key rule `events.redact()` uses. Those values do not round-trip; everything else does, byte
    for byte. The red-team test requires `save()` to succeed rather than refuse, so redacting was chosen over refusing.
-   **Open:** a secret inside `task_id` is still stored as given (R3). The human chose to refuse it, but the red-team
-   test wants `save()` to succeed; see `open-problems/SUB1-repair-conflicts.md`.
+9. **A secret-looking task id is refused** (R3, human decision, repair 3). `task_id` is the row's key, so it cannot be
+   stored redacted: if `_without_secrets(task_id) != task_id` (what `events.redact()` would change), `save()` raises
+   `ValueError` in `_validate_shape`, before the db is opened, and stores nothing. The message does not quote the id.
+   `test_state_redteam2.py::test_secret_in_task_id_is_refused` still fails, on its own setup rather than on the
+   refusal: see `open-problems/SUB1-repair-conflicts.md`.
 7. **Step ids are unique and non-blank** (human decision, red-team B2, B3). A plan with an empty or whitespace-only
    id, or with two steps of the same id (exact text), raises `ValueError`. `next_step()` still works by position.
 8. **redact() is linear** (R1). `events._ASSIGNED_SECRETS[0]` starts a match only where a name starts and eats it

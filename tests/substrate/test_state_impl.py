@@ -214,6 +214,16 @@ def test_blank_task_id_is_refused(task_id):
         save(_state(task_id=task_id))
 
 
+def test_secret_task_id_is_refused_and_nothing_stored():
+    key = "sk-ant-api03-" + "A" * 40
+    save(_state())  # so the table exists to look in
+    with pytest.raises(ValueError) as e:
+        save(_state(task_id=f"job-{key}"))
+    assert key not in str(e.value)
+    with closing(open_db()) as conn:
+        assert [r[0] for r in conn.execute("SELECT task_id FROM substrate_state")] == ["t"]
+
+
 @pytest.mark.parametrize(("column", "value"), [
     ("plan", '{"steps": "x"}'),
     ("plan", '{"steps": [{"id": "a", "description": "d", "status": 1, "model": null, "result_ref": null}]}'),
