@@ -15,16 +15,23 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
+import os
 import re
 import sqlite3
+import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
-from tanishi.core_state.db import migrate, open_db
+from tanishi.core_state.db import migrate, open_db, tanishi_home
+
+logger = logging.getLogger(__name__)
 
 GENESIS = "GENESIS"
+GAPS_FILE = "event_gaps.jsonl"  # in $TANISHI_HOME: failed writes waiting for a log_gap event
 _COLUMNS = "id, ts, kind, actor, session_id, payload, prev_hash, hash"
 
 # Key shapes, each kept from matching inside an ordinary word ("risk-assessment" is not an OpenAI key).
@@ -161,6 +168,8 @@ def emit(kind: str, payload: dict, actor: str = "tanishi", session_id: str | Non
     """Append one event to the Core State log and return its id.
 
     Raises TypeError or ValueError, writing nothing, if the payload is not plain JSON (NaN included).
+    Any failure after the header checks is noted in $TANISHI_HOME/event_gaps.jsonl (time and kind
+    only), and the next successful emit() first writes a log_gap event with the count of missed writes.
     """
     if not isinstance(kind, str) or not kind:
         raise TypeError("kind must be a non-empty str")
@@ -168,11 +177,20 @@ def emit(kind: str, payload: dict, actor: str = "tanishi", session_id: str | Non
         raise TypeError("actor must be a str")
     if session_id is not None and not isinstance(session_id, str):
         raise TypeError("session_id must be a str or None")
+    try:
+        return _append(kind, payload, actor, session_id)
+    except Exception:
+        _note_gap(kind)
+        raise
+
+
+def _append(kind: str, payload: Any, actor: str, session_id: str | None) -> int:
     text = json.dumps(_scrub(payload, 1, MAX_CHARS), ensure_ascii=False, allow_nan=False)
     kind, actor = _clean_text(kind), _clean_text(actor)
     session_id = None if session_id is None else _clean_text(session_id)
 
     conn = _open()
+    claim: tuple[Path, list[str]] | None = None
     try:
         # IMMEDIATE takes the write lock before we read the chain head, so two writers cannot fork it.
         conn.execute("BEGIN IMMEDIATE")
@@ -182,19 +200,91 @@ def emit(kind: str, payload: dict, actor: str = "tanishi", session_id: str | Non
             # The id is part of the hashed row, so we pick it ourselves, as AUTOINCREMENT would.
             id_ = max(head[0] if head else 0, seq[0] if seq else 0) + 1
             prev_hash = head[1] if head else GENESIS
-            ts = datetime.now(UTC).isoformat(timespec="microseconds")
-            digest = _hash(prev_hash, _canonical(id_, ts, kind, actor, session_id, text, prev_hash))
-            conn.execute(
-                f"INSERT INTO events ({_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (id_, ts, kind, actor, session_id, text, prev_hash, digest),
-            )
+            claim = _claim_gaps()
+            if claim:  # earlier writes failed: say so before this event, in the same transaction
+                gap = json.dumps(_scrub(_gap_summary(claim[1]), 1, MAX_CHARS), ensure_ascii=False)
+                prev_hash = _insert(conn, id_, "log_gap", "event_log", None, gap, prev_hash)
+                id_ += 1
+            _insert(conn, id_, kind, actor, session_id, text, prev_hash)
             conn.commit()
         except BaseException:
             conn.rollback()
+            if claim:
+                _write_gap_lines(claim[1])  # the log_gap was not written, so the gaps stay pending
             raise
     finally:
         conn.close()
+    if claim:
+        claim[0].unlink(missing_ok=True)
     return id_
+
+
+def _insert(conn: sqlite3.Connection, id_: int, kind: str, actor: str, session_id: str | None, text: str,
+            prev_hash: str) -> str:
+    ts = datetime.now(UTC).isoformat(timespec="microseconds")
+    digest = _hash(prev_hash, _canonical(id_, ts, kind, actor, session_id, text, prev_hash))
+    conn.execute(
+        f"INSERT INTO events ({_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (id_, ts, kind, actor, session_id, text, prev_hash, digest),
+    )
+    return digest
+
+
+def _gaps_path() -> Path:
+    return tanishi_home() / GAPS_FILE
+
+
+def _note_gap(kind: str) -> None:
+    """Record that a write of `kind` failed. Never the payload, and never raises."""
+    line = json.dumps({"ts": datetime.now(UTC).isoformat(timespec="microseconds"), "kind": _clean_text(kind, 200)})
+    _write_gap_lines([line])
+
+
+def _write_gap_lines(lines: list[str]) -> None:
+    path = _gaps_path()
+    try:
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as f:
+            f.write("".join(line + "\n" for line in lines))
+    except OSError as e:  # nowhere left to say it; the caller still gets the original error
+        logger.warning("could not record an event log gap: %s", type(e).__name__)
+
+
+def _claim_gaps() -> tuple[Path, list[str]] | None:
+    """Move the pending gaps file aside (atomic, so gaps noted meanwhile start a new file) and read it."""
+    path = _gaps_path()
+    if not path.exists():
+        return None
+    claimed = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex}.claim")
+    try:
+        os.replace(path, claimed)
+    except OSError:  # gone already (another writer claimed it), or not ours to move
+        return None
+    try:
+        lines = [line for line in claimed.read_text(encoding="utf-8", errors="replace").splitlines() if line]
+    except OSError:
+        return None
+    if not lines:
+        claimed.unlink(missing_ok=True)
+        return None
+    return claimed, lines
+
+
+def _gap_summary(lines: list[str]) -> dict[str, Any]:
+    kinds: dict[str, int] = {}
+    times = []
+    for line in lines:
+        try:
+            item = json.loads(line)
+            kind, ts = str(item["kind"]), str(item["ts"])
+        except (ValueError, TypeError, KeyError):
+            kind, ts = "unknown", ""
+        kinds[kind] = kinds.get(kind, 0) + 1
+        if ts:
+            times.append(ts)
+    return {"count": len(lines), "kinds": kinds, "first_ts": min(times, default=None),
+            "last_ts": max(times, default=None)}
 
 
 def verify_chain(conn: sqlite3.Connection) -> tuple[bool, int | None]:

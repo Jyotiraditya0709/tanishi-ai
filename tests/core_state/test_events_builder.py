@@ -195,6 +195,108 @@ def test_redacted_keys_do_not_collide():
     assert len(redact({a: 1, b: 2})) == 2
 
 
+# ---------------------------------------------------------------- gap marker
+
+def _break_the_db(monkeypatch):
+    def broken():
+        raise sqlite3.OperationalError("disk I/O error")
+
+    monkeypatch.setattr(ev, "_open", broken)
+
+
+def test_failed_writes_are_noted_without_their_payload(conn, monkeypatch):
+    _break_the_db(monkeypatch)
+    for kind in ("tool_call", "task_end"):
+        with pytest.raises(sqlite3.OperationalError):
+            emit(kind, {"input": "private words"})
+    text = ev._gaps_path().read_text()
+    lines = [json.loads(line) for line in text.splitlines()]
+    assert [sorted(x) for x in lines] == [["kind", "ts"], ["kind", "ts"]]
+    assert [x["kind"] for x in lines] == ["tool_call", "task_end"]
+    assert "private" not in text
+
+
+def test_next_successful_emit_writes_a_log_gap_first(conn, monkeypatch):
+    emit("before", {})
+    with monkeypatch.context() as m:
+        _break_the_db(m)
+        for _ in range(3):
+            with pytest.raises(sqlite3.OperationalError):
+                emit("tool_call", {})
+    new_id = emit("after", {})
+    events = list(iter_events())
+    assert [e.kind for e in events] == ["before", "log_gap", "after"]
+    assert events[1].payload["count"] == 3 and events[1].payload["kinds"] == {"tool_call": 3}
+    assert new_id == events[2].id
+    assert not ev._gaps_path().exists()
+    assert list(ev._gaps_path().parent.glob("*.claim")) == []
+    emit("later", {})
+    assert [e.kind for e in iter_events()][-1] == "later" and len(list(iter_events(kind="log_gap"))) == 1
+    assert verify_chain(conn) == (True, None)
+
+
+def test_a_rejected_payload_also_leaves_a_gap(conn):
+    with pytest.raises(TypeError):
+        emit("bad", {"o": object()})
+    emit("ok", {})
+    assert [(e.kind, e.payload.get("count")) for e in iter_events()] == [("log_gap", 1), ("ok", None)]
+
+
+def test_gaps_stay_pending_when_the_log_gap_write_fails(conn, monkeypatch):
+    with monkeypatch.context() as m:
+        _break_the_db(m)
+        with pytest.raises(sqlite3.OperationalError):
+            emit("a", {})
+    real_insert = ev._insert
+
+    def fail_on_event(c, id_, kind, *rest):
+        if kind == "b":
+            raise sqlite3.OperationalError("full")
+        return real_insert(c, id_, kind, *rest)
+
+    with monkeypatch.context() as m:
+        m.setattr(ev, "_insert", fail_on_event)
+        with pytest.raises(sqlite3.OperationalError):
+            emit("b", {})
+    assert conn.execute("SELECT count(*) FROM events").fetchone()[0] == 0
+    emit("c", {})
+    gap = next(iter_events(kind="log_gap"))
+    assert gap.payload["count"] == 2 and gap.payload["kinds"] == {"a": 1, "b": 1}
+
+
+def test_an_unwritable_home_does_not_mask_the_real_error(conn, monkeypatch, tmp_path):
+    blocker = tmp_path / "not_a_dir"
+    blocker.write_text("")
+    monkeypatch.setenv("TANISHI_HOME", str(blocker / "home"))
+    _break_the_db(monkeypatch)
+    with pytest.raises(sqlite3.OperationalError):
+        emit("a", {})
+
+
+def test_verify_chain_never_cries_wolf_under_a_busy_writer(tmp_path):
+    import threading
+
+    for i in range(10):
+        emit("seed", {"i": i})
+    stop = threading.Event()
+
+    def writer():
+        while not stop.is_set():
+            emit("live", {})
+
+    t = threading.Thread(target=writer)
+    t.start()
+    c = open_db()
+    try:
+        results = [verify_chain(c) for _ in range(1500)]
+    finally:
+        stop.set()
+        t.join()
+    assert set(results) == {(True, None)}
+    assert verify_chain(c) == (True, None)
+    c.close()
+
+
 # ---------------------------------------------------------------- wiring
 
 def _registry(**tool_kwargs):
