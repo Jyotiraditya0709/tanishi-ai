@@ -10,3 +10,10 @@
 - **`PRAGMA foreign_keys = OFF` lets a parent with children be deleted.** The children keep a dangling `parent_id`,
   and the delete trigger drops only the rows that name the deleted goal.
 - Every call opens the db, runs `migrate()` and closes it again. That is fine for a goal list. Do not call it in a hot loop.
+
+## Red-team breaks (2026-10-09, see `runs/redteam-CS4-20261009.md`)
+
+- [ ] G2 (medium): a goal's `owner` can be updated from `tanishi` to `user`. Fix: `BEFORE UPDATE OF owner` abort trigger.
+- [ ] G1 (low): huge int rank raises `OverflowError`, not `ValueError`.
+- [ ] G4 (low): non-string `parent_id` raises `ProgrammingError`, not `ValueError`.
+- [ ] G8 (low): `goal_ancestors` grows O(depth²).
