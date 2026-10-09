@@ -310,7 +310,7 @@ def test_failed_tool_and_cancelled_tool_both_get_a_result_event(conn):
                                 timeout_override=0.05))
     res = asyncio.run(reg.execute("hang", {}))
     assert not res.success
-    assert [e.kind for e in iter_events()] == ["tool_call", "tool_result"]
+    assert [e.kind for e in iter_events() if e.kind in ("tool_call", "tool_result")] == ["tool_call", "tool_result"]
 
 
 def test_tool_output_with_odd_types_does_not_break_execute(conn):

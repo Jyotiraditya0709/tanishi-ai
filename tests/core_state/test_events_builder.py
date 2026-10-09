@@ -428,7 +428,7 @@ def test_tool_events_inside_a_task_carry_its_task_id_and_session(conn, monkeypat
     b = _brain(monkeypatch, lambda m: m.BrainResponse(content="ok", model_used="ollama"), tool_calls=("t", "t"))
     b._active_session_id = "sess-7"
     asyncio.run(b.think("hi"))
-    events = list(iter_events())
+    events = [e for e in iter_events() if e.kind in ("task_start", "task_end", "tool_call", "tool_result")]
     task_id = events[0].payload["task_id"]
     assert [e.kind for e in events] == ["task_start", "tool_call", "tool_result", "tool_call", "tool_result",
                                         "task_end"]
@@ -440,7 +440,8 @@ def test_tool_events_inside_a_task_carry_its_task_id_and_session(conn, monkeypat
 
 def test_tool_events_outside_a_task_have_no_task_id(conn):
     asyncio.run(_registry().execute("t", {}))
-    assert [(e.payload["task_id"], e.session_id) for e in iter_events()] == [(None, None), (None, None)]
+    events = [e for e in iter_events() if e.kind in ("tool_call", "tool_result")]
+    assert [(e.payload["task_id"], e.session_id) for e in events] == [(None, None), (None, None)]
 
 
 def test_explicit_error_field_marks_the_task_failed(conn, monkeypatch):

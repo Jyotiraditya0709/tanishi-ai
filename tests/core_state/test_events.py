@@ -566,8 +566,11 @@ def test_registry_execute_emits_tool_call_then_tool_result(conn):
     reg = _make_registry()
     res = asyncio.run(reg.execute("ok_tool", {"text": "hi"}))
     assert res.success
-    events = list(iter_events())
+    all_events = list(iter_events())
+    predictions = [e for e in all_events if e.kind == "prediction"]
+    events = [e for e in all_events if e.kind in ("tool_call", "tool_result")]
     assert [e.kind for e in events] == ["tool_call", "tool_result"]
+    assert len(predictions) == 1 and predictions[0].id < events[0].id
     assert "ok_tool" in json.dumps(events[0].payload)
     assert "ok_tool" in json.dumps(events[1].payload)
     assert verify_chain(conn) == (True, None)
@@ -577,7 +580,8 @@ def test_registry_emits_tool_result_for_failing_tool(conn):
     reg = _make_registry()
     res = asyncio.run(reg.execute("bad_tool", {"text": "x"}))
     assert not res.success
-    assert _kinds()[0] == "tool_call" and _kinds()[-1] == "tool_result"
+    tool_kinds = [k for k in _kinds() if k in ("tool_call", "tool_result")]
+    assert tool_kinds[0] == "tool_call" and tool_kinds[-1] == "tool_result"
     assert "boom" in json.dumps(list(iter_events(kind="tool_result"))[-1].payload)
 
 
