@@ -91,7 +91,8 @@ nodes:
       Every change reaches main only through a PR that passed the gates. Agents work on agent/* branches only.
     steps:
       - Copy .github/workflows/ci.yml, .github/CODEOWNERS and scripts/check_protected_paths.py from the build kit.
-      - "In GitHub settings: protect main (require PR, require the ci check, require CODEOWNERS review, no force pushes)."
+      - "In GitHub settings, protect main: require a pull request before merging, require the status check named gates, block force pushes and deletions."
+      - "Leave required approvals at 0 while agents push with your GitHub account: GitHub never lets the author of a PR approve it. CODEOWNERS still flags protected-path PRs for you, and CI blocks agent branches from touching them. Later, give the agents their own bot account and turn on code-owner review."
       - Add pytest, ruff and pyyaml to a dev extra in pyproject.toml.
     acceptance:
       - A PR from an agent/* branch that edits constitution/ fails CI.

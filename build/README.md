@@ -20,7 +20,9 @@ Root files in the kit: `CLAUDE.md` (rules every agent loads), `.github/workflows
 1. **B0, you: clean ground.** Follow the steps on `python build/orchestrator.py card B0`. Do this before copying the kit in,
    because it rewrites history.
 2. **Copy the kit into the repo root** and commit it on a `human/build-kit` branch, then merge it.
-3. **B1, you: protect main.** In GitHub settings, protect `main`: require a PR, require the `ci / gates` check, require code-owner review, block force pushes.
+3. **B1, you: protect main.** In GitHub settings, protect `main`: require a pull request, require the status check `gates`, block force pushes and deletions.
+   Leave required approvals at 0 for now: GitHub never lets you approve a PR you authored, and the agents push with your account.
+   CI already blocks agent branches from touching protected paths. Later, a separate bot account for the agents lets you turn on code-owner review.
 4. **Install the tools**: `pip install -e . pytest ruff pyyaml hypothesis`, plus the `claude` CLI logged in with your Max plan, plus `gh` for PRs.
 5. **Check the graph**: `python build/orchestrator.py validate` and `python build/orchestrator.py plan`.
 6. **Start W1 (Warden) yourself.** It is yours alone; an agent may draft on a `human/warden` branch, and you read every line.
