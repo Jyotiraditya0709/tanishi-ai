@@ -16,4 +16,4 @@ and say so here; do not weaken the tests.
 
 **Builder (2026-10-09):** adopted as written, so the exam constants are unchanged. `"done"` and `"pending"` (plus
 `"running"` and `"failed"`) are constants in `tanishi/substrate/state.py`. Unknown id raises `LookupError`. The three
-types are plain (non-slotted) dataclasses. See decision 0014. Still open for the human: put the vocabulary in the spec.
+types are plain (non-slotted) dataclasses. See decision 0017 (was 0014). Still open for the human: put the vocabulary in the spec.
