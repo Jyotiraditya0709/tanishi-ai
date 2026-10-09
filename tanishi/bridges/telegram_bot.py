@@ -13,19 +13,89 @@ tool access, personality, and memory.
 """
 
 import os
+import json
 import asyncio
 import logging
+from uuid import uuid4
 from datetime import datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# approval_id -> Future[bool] resolved by inline-button CallbackQueryHandler
+_pending_approvals: dict[str, asyncio.Future] = {}
+
+# Serializes set_approval_callback → brain.think() on the shared registry (personal bot).
+# Revisit for multi-user: per-chat locks or contextvar-bound approvers.
+_think_lock = asyncio.Lock()
+
+
+def make_telegram_approver(bot, chat_id: int):
+    """Build an async registry approval callback for one chat turn."""
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    async def approve(tool_name: str, tool_input: dict) -> bool:
+        approval_id = uuid4().hex
+        loop = asyncio.get_running_loop()
+        fut = loop.create_future()
+        _pending_approvals[approval_id] = fut
+
+        payload = json.dumps(tool_input, indent=2)[:300]
+        text = (
+            f"⚠️ Tanishi wants to run *{tool_name}*\n"
+            f"```\n{payload}\n```\n"
+            "_Allow?_"
+        )
+        kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("✅ Allow", callback_data=f"appr:{approval_id}:yes"),
+                InlineKeyboardButton("⛔ Deny", callback_data=f"appr:{approval_id}:no"),
+            ]
+        ])
+
+        sent = None
+        try:
+            sent = await bot.send_message(
+                chat_id, text, reply_markup=kb, parse_mode="Markdown"
+            )
+        except Exception:
+            plain = (
+                f"⚠️ Tanishi wants to run {tool_name}\n"
+                f"{payload}\n\nAllow?"
+            )
+            sent = await bot.send_message(chat_id, plain, reply_markup=kb)
+
+        try:
+            return await asyncio.wait_for(fut, timeout=120)
+        except asyncio.TimeoutError:
+            if sent is not None:
+                try:
+                    await bot.edit_message_text(
+                        "⌛ Approval timed out — denied.",
+                        chat_id=chat_id,
+                        message_id=sent.message_id,
+                    )
+                except Exception:
+                    pass
+            return False
+        finally:
+            _pending_approvals.pop(approval_id, None)
+
+    return approve
 
 
 async def run_telegram_bot():
     """Start the Telegram bot bridge."""
     try:
         from telegram import Update
-        from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+        from telegram.ext import (
+            Application,
+            CallbackQueryHandler,
+            CommandHandler,
+            MessageHandler,
+            filters,
+            ContextTypes,
+        )
     except ImportError:
         print("Install telegram library: pip install python-telegram-bot")
         return
@@ -56,12 +126,38 @@ async def run_telegram_bot():
 
     brain = TanishiBrain(tool_registry=registry)
     memory = MemoryManager(config.db_path)
+    restored = brain.load_session_history("telegram", max_turns=30)
+    if restored:
+        print(f"[telegram] restored {restored} messages from session telegram")
 
     print(f"\n🤖 Tanishi Telegram Bridge starting...")
     print(f"   Brain: {brain.get_status()['claude']}")
     print(f"   Tools: {len(registry.tools)}")
     print(f"   Allowed users: {'all (set TELEGRAM_ALLOWED_IDS for security!)' if not allowed_ids else allowed_ids}")
     print(f"   Send a message to your bot on Telegram!\n")
+
+    async def on_approval_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Resolve a pending tool-approval Future from an inline button press."""
+        q = update.callback_query
+        user = update.effective_user
+        if allowed_ids and user.id not in allowed_ids:
+            await q.answer("Not authorized", show_alert=True)
+            return
+
+        await q.answer()
+        try:
+            _, approval_id, verdict = q.data.split(":")
+        except ValueError:
+            return
+
+        fut = _pending_approvals.get(approval_id)
+        allowed = verdict == "yes"
+        if fut and not fut.done():
+            fut.set_result(allowed)
+        try:
+            await q.edit_message_text("✅ Allowed." if allowed else "⛔ Denied.")
+        except Exception:
+            pass
 
     async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start command."""
@@ -104,11 +200,18 @@ async def run_telegram_bot():
         core_context = memory.build_core_context()
         tool_context = f"\n\nYou have {len(registry.tools)} tools. Use them when helpful."
 
-        # Think
-        response = await brain.think(
-            user_input=user_text,
-            extra_context=core_context + tool_context,
-        )
+        # One tool-capable turn at a time on the shared registry (personal bot).
+        async with _think_lock:
+            registry.set_approval_callback(
+                make_telegram_approver(context.bot, update.effective_chat.id)
+            )
+            try:
+                response = await brain.think(
+                    user_input=user_text,
+                    extra_context=core_context + tool_context,
+                )
+            finally:
+                registry.set_approval_callback(None)
 
         # Log
         memory.log_message("telegram", "user", user_text)
@@ -169,6 +272,7 @@ async def run_telegram_bot():
 
     # Build the bot
     app = Application.builder().token(token).build()
+    app.add_handler(CallbackQueryHandler(on_approval_callback, pattern=r"^appr:"))
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CommandHandler("memory", memory_command))
