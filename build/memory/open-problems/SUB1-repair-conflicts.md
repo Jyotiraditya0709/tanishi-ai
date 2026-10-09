@@ -8,6 +8,8 @@ The human ruled step ids unique and non-empty; the tester changed the exam's gen
 
 ## Open: R3, a secret inside `task_id` (found in repair 2, 2026-10-09)
 
+Status: R3 is resolved by refusing a secret-looking task_id (the human chose option 1, 2026-10-09). The red-team test is now `test_secret_in_task_id_is_refused`; it fails until the builder re-adds the `_validate_shape` check.
+
 The card says: a `task_id` that `redact()` would change is refused with `ValueError`.
 The red-team test `test_state_redteam2.py::test_r2_secret_in_task_id_is_stored_in_plaintext` does
 

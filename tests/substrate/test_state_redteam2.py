@@ -23,10 +23,12 @@ def _raw():
         return json.dumps(conn.execute("SELECT * FROM substrate_state").fetchall())
 
 
-def test_r2_secret_in_task_id_is_stored_in_plaintext():
-    """R1: the B1 fix redacts every column except task_id, which is stored as given."""
-    save(_state(task_id=f"job-{KEY}"))
+def test_secret_in_task_id_is_refused():
+    """R3: a task_id that redact() would change is invalid input: save() raises and stores nothing."""
+    with pytest.raises(ValueError):
+        save(_state(task_id=f"job-{KEY}"))
     assert KEY not in _raw()
+    assert json.loads(_raw()) == []
 
 
 def test_r2_container_under_secret_key_keeps_its_secret():
