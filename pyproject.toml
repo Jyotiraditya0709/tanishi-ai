@@ -47,3 +47,6 @@ include = ["tanishi*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.setuptools.package-data]
+"tanishi.core_state" = ["migrations/*.sql"]
