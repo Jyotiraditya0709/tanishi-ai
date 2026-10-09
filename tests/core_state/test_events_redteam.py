@@ -41,7 +41,6 @@ def stored(c) -> str:
 
 # ---------- chain integrity ----------
 
-@BREAK
 def test_deleting_the_tail_then_emitting_hides_the_deletion(conn):
     """C1: verify_chain never checks that ids are contiguous. Delete the last row, let the next honest
     emit() run: it takes id max(head, seq)+1, links to the new head, and sqlite_sequence catches up."""
@@ -56,7 +55,6 @@ def test_deleting_the_tail_then_emitting_hides_the_deletion(conn):
     assert not ok and bad == 5
 
 
-@BREAK
 def test_deleting_every_row_then_emitting_hides_the_wipe(conn):
     """C1b: same hole, whole log. The new first row has id 4, prev GENESIS, a valid hash."""
     for i in range(3):
@@ -68,7 +66,6 @@ def test_deleting_every_row_then_emitting_hides_the_wipe(conn):
     assert verify_chain(conn)[0] is False
 
 
-@BREAK
 def test_verify_chain_gives_no_false_alarm_while_a_writer_is_active(tmp_path):
     """C2: verify_chain reads the rows in one statement and sqlite_sequence in another. An emit() that
     lands between them makes seq > last_id and a healthy log is reported tampered."""
@@ -350,7 +347,6 @@ def test_tool_input_is_clipped_like_tool_output(conn):
 
 # ---------- reads and performance ----------
 
-@BREAK
 def test_since_filter_with_z_suffix_does_not_skip_events_in_that_second(conn):
     emit("a", {})
     first = next(iter_events()).ts  # e.g. 2026-10-09T12:00:00.123456+00:00

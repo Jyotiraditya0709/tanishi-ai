@@ -144,11 +144,24 @@ def emit(kind: str, payload: dict, actor: str = "tanishi", session_id: str | Non
 
 
 def verify_chain(conn: sqlite3.Connection) -> tuple[bool, int | None]:
-    """Walk the log in id order. (True, None) if intact, else (False, id of the first broken row).
+    """Walk the log in id order. (True, None) if intact, else (False, id of the first missing or broken row).
 
-    A deleted row shows up at the row after it. A deleted tail shows up as the first missing id,
-    because sqlite_sequence still remembers it. Read only.
+    Ids must run 1, 2, 3, ... with no gap, and the last id must equal sqlite_sequence, so a deleted
+    row, a deleted tail or a wiped log shows up as the first missing id, even after later emits.
+    The rows and sqlite_sequence are read in one read transaction, so a concurrent emit() cannot
+    make a healthy log look truncated. Read only.
     """
+    began = not conn.in_transaction
+    if began:
+        conn.execute("BEGIN")
+    try:
+        return _verify(conn)
+    finally:
+        if began:
+            conn.rollback()
+
+
+def _verify(conn: sqlite3.Connection) -> tuple[bool, int | None]:
     cur = conn.cursor()
     cur.row_factory = None
     expected_prev = GENESIS
@@ -156,6 +169,8 @@ def verify_chain(conn: sqlite3.Connection) -> tuple[bool, int | None]:
     for id_, ts, kind, actor, session_id, payload, prev_hash, digest in cur.execute(
         f"SELECT {_COLUMNS} FROM events ORDER BY id"
     ):
+        if id_ != last_id + 1:
+            return False, last_id + 1
         if prev_hash != expected_prev or not isinstance(prev_hash, str):
             return False, id_
         try:
@@ -165,29 +180,44 @@ def verify_chain(conn: sqlite3.Connection) -> tuple[bool, int | None]:
         if not ok:
             return False, id_
         expected_prev, last_id = digest, id_
-    seq = cur.execute("SELECT seq FROM sqlite_sequence WHERE name = 'events'").fetchone()
-    if seq and seq[0] > last_id:
-        return False, last_id + 1
+    row = cur.execute("SELECT seq FROM sqlite_sequence WHERE name = 'events'").fetchone()
+    seq = row[0] if row else 0
+    if seq != last_id:  # seq ahead: the tail was deleted; seq behind: sqlite_sequence was rewritten
+        return False, min(seq, last_id) + 1
     return True, None
 
 
 def iter_events(kind: str | None = None, since: str | None = None) -> Iterator[Event]:
-    """Events in id order, read lazily. `kind` matches exactly; `since` keeps rows with ts >= since."""
+    """Events in id order, read lazily. `kind` matches exactly; `since` keeps rows with ts >= since.
+
+    `since` is any ISO 8601 time ("Z", an offset, or none, which means UTC). It is compared with each
+    row's ts as a UTC datetime, not as a string. Raises ValueError for a `since` that is not ISO 8601.
+    """
+    since_dt = None if since is None else _utc(since)
     sql = f"SELECT {_COLUMNS} FROM events"
-    where, args = [], []
+    args = []
     if kind is not None:
-        where.append("kind = ?")
+        sql += " WHERE kind = ?"
         args.append(kind)
-    if since is not None:
-        where.append("ts >= ?")
-        args.append(since)
-    if where:
-        sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY id"
     conn = _open()
     try:
         for row in conn.execute(sql, args):
+            if since_dt is not None and not _at_or_after(row[1], since_dt):
+                continue
             yield Event(row[0], row[1], row[2], row[3], row[4],
                         None if row[5] is None else json.loads(row[5]), row[6], row[7])
     finally:
         conn.close()
+
+
+def _utc(text: str) -> datetime:
+    dt = datetime.fromisoformat(text)
+    return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
+
+
+def _at_or_after(ts: Any, since: datetime) -> bool:
+    try:
+        return _utc(ts) >= since
+    except (TypeError, ValueError):  # a ts that is not a time cannot be shown to be after `since`
+        return False
