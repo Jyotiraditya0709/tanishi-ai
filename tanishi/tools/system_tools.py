@@ -148,6 +148,7 @@ def get_system_tools() -> list[ToolDefinition]:
             category="system",
             risk_level="high",
             requires_approval=True,
+            timeout_override=0,
         ),
         ToolDefinition(
             name="get_system_info",

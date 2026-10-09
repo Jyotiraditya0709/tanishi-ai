@@ -29,6 +29,8 @@ from dataclasses import dataclass, field
 
 import anthropic
 
+from tanishi.config.models import CLAUDE_DEFAULT
+
 
 # ============================================================
 # Data Models
@@ -177,7 +179,7 @@ class AutonomousLearner:
     def __init__(self, tanishi_home: Path, claude_client=None):
         self.home = tanishi_home
         self.client = claude_client or self._init_client()
-        self.model = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514")
+        self.model = os.getenv("CLAUDE_MODEL", CLAUDE_DEFAULT)
         self.improvements_dir = tanishi_home / "improvements"
         self.reports_dir = tanishi_home / "reports"
         self.improvements_dir.mkdir(parents=True, exist_ok=True)
@@ -626,6 +628,7 @@ def get_learning_tools() -> list[ToolDefinition]:
             handler=run_learning_cycle,
             category="self-improvement",
             risk_level="medium",
+            timeout_override=0,
         ),
         ToolDefinition(
             name="show_improvements",
@@ -638,6 +641,7 @@ def get_learning_tools() -> list[ToolDefinition]:
             handler=show_improvements,
             category="self-improvement",
             risk_level="low",
+            timeout_override=0,
         ),
         ToolDefinition(
             name="show_latest_report",
@@ -650,5 +654,6 @@ def get_learning_tools() -> list[ToolDefinition]:
             handler=show_latest_report,
             category="self-improvement",
             risk_level="low",
+            timeout_override=0,
         ),
     ]

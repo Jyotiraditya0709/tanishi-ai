@@ -11,6 +11,7 @@ import base64
 from datetime import datetime
 from pathlib import Path
 
+from tanishi.config.models import CLAUDE_DEFAULT
 from tanishi.tools.registry import ToolDefinition
 
 
@@ -62,7 +63,7 @@ async def _analyze_with_vision(img_b64: str, question: str) -> str:
         client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
 
         response = client.messages.create(
-            model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514"),
+            model=os.getenv("CLAUDE_MODEL", CLAUDE_DEFAULT),
             max_tokens=300,
             messages=[{
                 "role": "user",

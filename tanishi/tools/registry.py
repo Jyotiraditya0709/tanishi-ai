@@ -11,11 +11,13 @@ We execute it here and feed the result back. Claude then responds
 with the final answer incorporating the tool's output.
 """
 
+import asyncio
 import json
-import traceback
-from datetime import datetime
+import inspect
 from typing import Any, Callable, Optional
 from dataclasses import dataclass, field
+
+from tanishi.config import tool_params as tool_cfg
 
 
 @dataclass
@@ -38,6 +40,34 @@ class ToolDefinition:
     requires_approval: bool = False  # If True, ask user before executing
     category: str = "general"        # "search", "filesystem", "system", "code", "communication"
     risk_level: str = "low"          # "low", "medium", "high"
+    timeout_override: Optional[float] = None  # None=DEFAULT_TOOL_TIMEOUT; 0=handler owns timeout
+
+
+def _registry_timeout_seconds(tool: ToolDefinition) -> Optional[float]:
+    """Return registry wait_for cap in seconds, or None if the handler owns timing."""
+    if tool.timeout_override is not None:
+        if tool.timeout_override == 0:
+            return None
+        return tool.timeout_override
+    return tool_cfg.DEFAULT_TOOL_TIMEOUT
+
+
+async def _run_handler_with_timeout(
+    handler: Callable,
+    tool_input: dict,
+    timeout_s: Optional[float],
+) -> Any:
+    if inspect.iscoroutinefunction(handler):
+        coro = handler(**tool_input)
+        if timeout_s is None:
+            return await coro
+        return await asyncio.wait_for(coro, timeout=timeout_s)
+    if timeout_s is None:
+        return await asyncio.to_thread(handler, **tool_input)
+    return await asyncio.wait_for(
+        asyncio.to_thread(handler, **tool_input),
+        timeout=timeout_s,
+    )
 
 
 class ToolRegistry:
@@ -93,41 +123,70 @@ class ToolRegistry:
 
         tool = self.tools[tool_name]
 
-        # Check if approval needed
-        if tool.requires_approval and self._approval_callback:
-            approved = self._approval_callback(tool_name, tool_input)
-            if not approved:
+        # Check if approval needed (fail-closed: no callback => deny)
+        if tool.requires_approval:
+            if self._approval_callback is None:
+                elapsed = (time.time() - start) * 1000
                 return ToolResult(
                     success=False,
                     output="",
                     tool_name=tool_name,
-                    error="User denied permission for this action.",
+                    execution_time_ms=elapsed,
+                    error=(
+                        f"'{tool_name}' requires approval, but no approval mechanism is "
+                        "available in this context. Denied."
+                    ),
                 )
 
-        # Execute
-        try:
-            result = await tool.handler(**tool_input)
-            elapsed = (time.time() - start) * 1000
-            if isinstance(result, (dict, list)):
-                normalized = json.dumps(result, ensure_ascii=False)
-            else:
-                normalized = str(result) if not isinstance(result, str) else result
+            approved = self._approval_callback(tool_name, tool_input)
+            if inspect.isawaitable(approved):
+                approved = await approved
+            if not approved:
+                elapsed = (time.time() - start) * 1000
+                return ToolResult(
+                    success=False,
+                    output="",
+                    tool_name=tool_name,
+                    execution_time_ms=elapsed,
+                    error=f"'{tool_name}' was denied.",
+                )
 
-            return ToolResult(
-                success=True,
-                output=normalized,
-                tool_name=tool_name,
-                execution_time_ms=elapsed,
-            )
-        except Exception as e:
-            elapsed = (time.time() - start) * 1000
-            return ToolResult(
-                success=False,
-                output="",
-                tool_name=tool_name,
-                execution_time_ms=elapsed,
-                error=f"{type(e).__name__}: {str(e)}",
-            )
+        max_attempts = 1 + tool_cfg.TOOL_RETRIES
+        last_error = ""
+        timeout_s = _registry_timeout_seconds(tool)
+        for _attempt in range(max_attempts):
+            try:
+                result = await _run_handler_with_timeout(
+                    tool.handler,
+                    tool_input,
+                    timeout_s,
+                )
+                elapsed = (time.time() - start) * 1000
+                if isinstance(result, (dict, list)):
+                    normalized = json.dumps(result, ensure_ascii=False)
+                else:
+                    normalized = str(result) if not isinstance(result, str) else result
+
+                return ToolResult(
+                    success=True,
+                    output=normalized,
+                    tool_name=tool_name,
+                    execution_time_ms=elapsed,
+                )
+            except asyncio.TimeoutError:
+                cap = timeout_s if timeout_s is not None else tool_cfg.DEFAULT_TOOL_TIMEOUT
+                last_error = f"Timeout after {cap}s"
+            except Exception as e:
+                last_error = f"{type(e).__name__}: {str(e)}"
+
+        elapsed = (time.time() - start) * 1000
+        return ToolResult(
+            success=False,
+            output="",
+            tool_name=tool_name,
+            execution_time_ms=elapsed,
+            error=last_error,
+        )
 
     def list_tools(self) -> list[dict]:
         """List all registered tools with metadata."""

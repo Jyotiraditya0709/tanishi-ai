@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 
 import anthropic
 
+from tanishi.config.models import CLAUDE_DEFAULT
 from tanishi.tools.registry import ToolDefinition
 
 
@@ -147,7 +148,7 @@ class MultiAgentEngine:
     Orchestrates multiple specialist agents working in parallel.
     """
 
-    def __init__(self, claude_client, model: str = "claude-sonnet-4-20250514"):
+    def __init__(self, claude_client, model: str = CLAUDE_DEFAULT):
         self.client = claude_client
         self.model = model
         self.on_status: Optional[Callable] = None
@@ -414,6 +415,7 @@ def get_multi_agent_tools() -> list[ToolDefinition]:
             handler=multi_agent_task,
             category="multi-agent",
             risk_level="low",
+            timeout_override=0,
         ),
         ToolDefinition(
             name="spawn_agent",
@@ -429,5 +431,6 @@ def get_multi_agent_tools() -> list[ToolDefinition]:
             handler=spawn_agent,
             category="multi-agent",
             risk_level="low",
+            timeout_override=0,
         ),
     ]

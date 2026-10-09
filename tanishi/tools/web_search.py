@@ -279,6 +279,7 @@ def get_web_tools() -> list[ToolDefinition]:
             handler=web_search,
             category="search",
             risk_level="low",
+            timeout_override=0,
         ),
         ToolDefinition(
             name="fetch_webpage",
@@ -301,5 +302,6 @@ def get_web_tools() -> list[ToolDefinition]:
             handler=fetch_webpage,
             category="search",
             risk_level="low",
+            timeout_override=0,
         ),
     ]

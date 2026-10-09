@@ -450,6 +450,7 @@ class MCPClientManager:
                 handler=mcp_handler,
                 category="mcp",
                 risk_level="medium",
+                timeout_override=0,
             )
 
             self.tool_registry.register(tool_def)
@@ -678,6 +679,7 @@ def get_mcp_tools() -> list[ToolDefinition]:
             handler=mcp_connect,
             category="mcp",
             risk_level="medium",
+            timeout_override=0,
         ),
         ToolDefinition(
             name="mcp_list",
@@ -690,6 +692,7 @@ def get_mcp_tools() -> list[ToolDefinition]:
             handler=mcp_list,
             category="mcp",
             risk_level="low",
+            timeout_override=0,
         ),
         ToolDefinition(
             name="mcp_disconnect",
@@ -707,5 +710,6 @@ def get_mcp_tools() -> list[ToolDefinition]:
             handler=mcp_disconnect,
             category="mcp",
             risk_level="low",
+            timeout_override=0,
         ),
     ]

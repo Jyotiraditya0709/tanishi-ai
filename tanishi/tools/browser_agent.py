@@ -405,6 +405,7 @@ def get_browser_tools() -> list[ToolDefinition]:
             handler=browse_url,
             category="browser",
             risk_level="low",
+            timeout_override=0,
         ),
         ToolDefinition(
             name="browser_search",
@@ -425,6 +426,7 @@ def get_browser_tools() -> list[ToolDefinition]:
             handler=browser_search,
             category="browser",
             risk_level="low",
+            timeout_override=0,
         ),
         ToolDefinition(
             name="click_element",
@@ -450,6 +452,7 @@ def get_browser_tools() -> list[ToolDefinition]:
             handler=click_element,
             category="browser",
             risk_level="medium",
+            timeout_override=0,
         ),
         ToolDefinition(
             name="fill_form",
@@ -465,6 +468,7 @@ def get_browser_tools() -> list[ToolDefinition]:
             handler=fill_form,
             category="browser",
             risk_level="medium",
+            timeout_override=0,
         ),
         ToolDefinition(
             name="get_page_info",
@@ -477,6 +481,7 @@ def get_browser_tools() -> list[ToolDefinition]:
             handler=get_page_info,
             category="browser",
             risk_level="low",
+            timeout_override=0,
         ),
         ToolDefinition(
             name="scroll_page",
@@ -491,6 +496,7 @@ def get_browser_tools() -> list[ToolDefinition]:
             handler=scroll_page,
             category="browser",
             risk_level="low",
+            timeout_override=0,
         ),
         ToolDefinition(
             name="browser_back",
@@ -503,6 +509,7 @@ def get_browser_tools() -> list[ToolDefinition]:
             handler=browser_back,
             category="browser",
             risk_level="low",
+            timeout_override=0,
         ),
         ToolDefinition(
             name="close_browser",
@@ -515,5 +522,6 @@ def get_browser_tools() -> list[ToolDefinition]:
             handler=close_browser,
             category="browser",
             risk_level="low",
+            timeout_override=0,
         ),
     ]
