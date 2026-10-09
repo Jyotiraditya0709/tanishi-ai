@@ -34,10 +34,10 @@ def test_creates_missing_parent_dirs(tmp_path):
     assert (tmp_path / "a" / "b" / "core.db").exists()
 
 
-def test_memory_database_migrates():
+def test_memory_database_migrates(latest_version):
     c = open_db(":memory:")
     try:
-        assert migrate(c) == 1
+        assert migrate(c) == latest_version
         assert c.execute("PRAGMA foreign_keys").fetchone()[0] == 1
     finally:
         c.close()
@@ -61,7 +61,7 @@ def test_newer_database_than_code_is_refused(conn):
 
 
 @pytest.mark.parametrize("round_", range(20))
-def test_concurrent_migrate_applies_version_once(tmp_path, round_):
+def test_concurrent_migrate_applies_version_once(tmp_path, round_, latest_version):
     path = str(tmp_path / "race.db")
     results, errors = [], []
     start = threading.Barrier(4, timeout=10)
@@ -84,10 +84,11 @@ def test_concurrent_migrate_applies_version_once(tmp_path, round_):
         t.join(timeout=30)
     assert not any(t.is_alive() for t in threads), "a worker hung"
     assert errors == []
-    assert results == [1, 1, 1, 1]
+    assert results == [latest_version] * 4
     c = open_db(path)
     try:
-        assert c.execute("SELECT version FROM schema_version").fetchall() == [(1,)]
+        assert c.execute("SELECT version FROM schema_version").fetchall() == [
+            (v,) for v in range(1, latest_version + 1)]
     finally:
         c.close()
 
