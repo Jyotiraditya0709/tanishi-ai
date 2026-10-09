@@ -1,0 +1,33 @@
+# =============================================================================
+# requirements-voice.txt — What this is
+# =============================================================================
+#
+# This file is NOT part of the minimal Tanishi install (requirements.txt).
+# It lists Python packages needed only for CLI voice mode:  /voice
+#
+# What /voice does:
+#   - Listens via microphone (sounddevice + numpy)
+#   - Speech-to-text (SpeechRecognition; optionally faster-whisper)
+#   - Sends text to TanishiBrain (same as typing in the CLI)
+#   - Speaks replies (edge-tts and/or pyttsx3; pygame-ce for audio playback)
+#
+# Install (from repo root, venv active):
+#   pip install -r requirements-voice.txt
+#
+# macOS note: if pip crashes with pyexpat/libexpat errors, install with:
+#   python3 -m pip install -r requirements-voice.txt \
+#     --target .venv/lib/python3.12/site-packages \
+#     --python-version 3.12 --platform macosx_11_0_arm64
+#
+# Then restart the CLI and run /voice again.
+# =============================================================================
+
+numpy>=2.0.0
+SpeechRecognition>=3.10.0
+edge-tts>=7.0.0
+pyttsx3>=2.90
+sounddevice>=0.5.0
+pygame-ce>=2.5.0
+
+# Optional: local GPU transcription (large download)
+# faster-whisper>=1.0.0

@@ -171,7 +171,7 @@ Beyond the core systems above, Tanishi includes a broad surface of practical cap
 
 ---
 
-## Quickstart
+ ## Quickstart
 
 ### Prerequisites
 - Python 3.11+
