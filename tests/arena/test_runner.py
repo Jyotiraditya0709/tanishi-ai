@@ -2,6 +2,7 @@
 
 One check per acceptance line, plus edges the spec implies and one property test (row accounting).
 """
+import dataclasses
 import math
 import os
 import random
@@ -9,8 +10,14 @@ import time
 from pathlib import Path
 
 import pytest
-from arena_helpers import CANDIDATE, experiments
-from tanishi.arena.runner import run
+from arena_helpers import CANDIDATE, experiments, stub_executor
+
+from tanishi.arena.runner import run as _run
+
+
+def run(task_set, candidate, seeds=3):
+    """The exam's run(): the runner refuses to run without an executor (RT-2), so every call passes the stub."""
+    return _run(task_set, candidate, seeds=seeds, executor=stub_executor)
 
 
 def _scores(conn):
@@ -53,6 +60,12 @@ def test_row_ids_are_unique_and_a_second_run_adds_rows(make_task, outer_db):
     rows = experiments(outer_db)
     assert len(rows) == 4
     assert len({r[0] for r in rows}) == 4
+
+
+def test_run_without_an_executor_is_refused_and_records_nothing(make_task, outer_db):
+    with pytest.raises(ValueError):
+        _run([make_task("full")], CANDIDATE, seeds=2)
+    assert experiments(outer_db) == []
 
 
 def test_run_returns_a_result_object(make_task):
@@ -122,7 +135,7 @@ def test_negative_score_is_never_stored_as_negative_or_positive_credit(make_task
 
 
 def test_unresolvable_verifier_scores_zero(make_task, outer_db):
-    t = make_task("full", verifier="no_such_module_anywhere.check")
+    t = dataclasses.replace(make_task("full"), verifier="no_such_module_anywhere.check")
     run([t], CANDIDATE, seeds=2)
     assert _scores(outer_db) == [0.0, 0.0]
 
