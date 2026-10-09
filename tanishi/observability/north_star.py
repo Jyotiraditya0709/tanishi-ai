@@ -4,7 +4,7 @@
 was computed from and an ``explanation``, so a 0 (or a number that cannot be computed yet) always says why.
 It only reads: it never creates, migrates or writes the database.
 
-What each number is built from (decision 0014):
+What each number is built from (decision 0018):
 
 - **CEI** = B x T x H x N x A x P (``cei``). B is the count of Reality-verified mastered capabilities
   (``capabilities.state = 'mastered'``). T, H, N, A and P are defined in the master plan, which is not in the repo;

@@ -1,7 +1,8 @@
-# 0014 · Where the North Star numbers come from (OBS2)
+# 0018 · Where the North Star numbers come from (OBS2)
 
 Date: 2026-10-09. Decided by: the OBS2 implementer, within the spec. The human should confirm items 2, 3 and 5
-against the master plan (see open-problems/OBS2.md).
+against the master plan (see open-problems/OBS2.md). Items 8 to 10 are human decisions from the OBS2 repair round.
+(This file was 0014 until the repair round renumbered it to 0018.)
 
 1. **Human Effort is stored as events.** `tanishi time start` and `stop` call `events.emit("effort_start" | "effort_stop", {},
    actor="human")`. No new table and no migration. Hours come from replaying those events in id order: a start while the
@@ -23,3 +24,13 @@ against the master plan (see open-problems/OBS2.md).
 7. **Shape.** `compute()` returns exactly six top-level keys: `CEI`, `RCR`, `CAR`, `AR`, `IA` and `human_effort`. Each has `value`,
    `inputs`, `unit` and `explanation`. `compute()` and `effort.report()` never create, migrate or write the db.
    A missing or unmigrated db reads as empty.
+8. **RCR has an hours floor.** In `compute()`, timed hours above 0 but below `MIN_RCR_HOURS` (0.1 h) give RCR `None`
+   with "not a rate, a timer artefact", so a few seconds of timer plus one discovery cannot read as a breakthrough.
+   `rcr()` itself stays the plain formula (the exam's property test uses hours from 0.5 up).
+9. **window_days is capped at `effort.MAX_WINDOW_DAYS` (36500).** One check, `effort.check_window`, is used by
+   `compute()`, `effort.hours()` and `effort.report()`, and runs before the window is used. Larger values (1e9,
+   10**400, inf) are a ValueError, so `tanishi time report 1e9` exits 1 with a clear message.
+10. **Huge or non-finite numbers.** `cei()` and `rcr()` raise ValueError (not OverflowError) for an input too large
+    for a float. `rcr()` raises ValueError when its result is not finite. `cei()` returns `None` when its product is not
+    finite: the card asked for ValueError, but the red-team test calls it without catching one, and the test wins
+    (open-problems/OBS2-repair-conflicts.md).

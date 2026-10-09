@@ -1,4 +1,4 @@
-"""OBS2 implementer tests: where compute() reads each number from (decision 0014).
+"""OBS2 implementer tests: where compute() reads each number from (decision 0018).
 
 The exam (test_north_star.py) cannot seed rows because the card names no tables. These pin the sources this
 build chose: the OBS3 ledger for the RCR funnel, `capabilities` for B and the effort events for the timer.
