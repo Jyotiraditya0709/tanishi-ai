@@ -1,6 +1,6 @@
 """Goals: the user's goal tree and Tanishi's own goals in one ranked table (node CS4).
 
-The user's goals always come first. Within one owner a higher rank comes first (decision 0008).
+The user's goals always come first. Within one owner a higher rank comes first (decision 0010).
 The tree rules (no cycle, no self-parent, the parent must exist, at most 64 levels) and the fixed owner
 are triggers in migrations/0002_goal_tree.sql, so raw SQL cannot break them either. This module
 installs nothing itself: migrate() does.
@@ -53,7 +53,7 @@ def _connect() -> sqlite3.Connection:
 
 def _finite_rank(rank: object) -> float:
     if isinstance(rank, bool) or not isinstance(rank, (int, float)):
-        raise ValueError(f"rank must be a finite number, got {rank!r}")  # noqa: TRY004 - every bad rank is a ValueError (decision 0008)
+        raise ValueError(f"rank must be a finite number, got {rank!r}")  # noqa: TRY004 - every bad rank is a ValueError (decision 0010)
     try:
         value = float(rank)
     except OverflowError:  # an int too big for a float, such as 10**400

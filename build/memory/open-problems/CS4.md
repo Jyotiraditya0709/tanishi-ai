@@ -1,5 +1,9 @@
 # CS4 · the goal tree triggers cannot be a migration yet
 
+**Status (2026-10-09, CS4 repair): resolved.** The triggers now live in migration 0002
+(`tanishi/core_state/migrations/0002_goal_tree.sql`), after PR #5 let the CS1 exam accept later migrations. `goals.py`
+installs nothing at runtime. The DB owner check on insert is still not built; see `CS4-repair-conflicts.md`.
+
 **The conflict.** Decision 0007 says every new schema change is a new `000N_name.sql`. The CS4 tester expected a
 `0002_*.sql` holding the cycle triggers. But the CS1 exam pins the schema version at 1: `migrate()` must return 1,
 `schema_version` must be `[1]`, and so on. A `0002_goal_tree.sql` was tried, and 34 CS1 exam cases failed on `2 == 1`.
