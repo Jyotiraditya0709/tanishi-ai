@@ -12,8 +12,12 @@ The CS1 round-trip exam is no longer a blocker for the owner check: since PR #5 
 
 ## Status
 
-Open. Both rows need a ruling on a red-team test, not more code.
+Closed (CS4 repair 2, 2026-10-09). Both rows were settled by rewriting the red-team tests.
 
 Status (tester fix, 2026-10-09): G8 and G3 were rewritten to the human's decisions. G8 now checks the 64-level cap
 (a 64-level chain is accepted, the 65th level is refused, at most 2080 rows in goal_ancestors). G3 now expects a raw
 insert with a bad owner to be refused, and is xfail(strict) until the builder adds the owner check.
+
+Status (builder, CS4 repair 2, 2026-10-09): the owner check is in `goals_check_insert` in 0002. It was edited in place,
+not added as 0003, because CS4 has never been merged and 0002 has never run on a real db. G3's xfail mark is removed
+and G3 passes. G8 passes against the cap. Suite: 280 passed, 0 failed, 0 xfailed.
