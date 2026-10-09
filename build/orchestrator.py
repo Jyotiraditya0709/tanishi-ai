@@ -295,18 +295,18 @@ def paused_until() -> dt.datetime | None:
         until = dt.datetime.fromisoformat(PAUSE.read_text().strip())
     except ValueError:
         return None
-    return until if until > dt.datetime.now(dt.timezone.utc) else None
+    return until if until > dt.datetime.now(dt.UTC) else None
 
 
 def pause(hours: float, reason: str) -> dt.datetime:
-    until = dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=hours)
+    until = dt.datetime.now(dt.UTC) + dt.timedelta(hours=hours)
     PAUSE.write_text(until.isoformat())
     log_run({"event": "pause", "until": until.isoformat(), "reason": reason})
     return until
 
 
 def log_run(record: dict) -> None:
-    record.setdefault("ts", dt.datetime.now(dt.timezone.utc).isoformat())
+    record.setdefault("ts", dt.datetime.now(dt.UTC).isoformat())
     with open(RUNS, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(record) + "\n")
 
@@ -358,14 +358,14 @@ def launch(node_id: str, role: str, model: str | None, unattended: bool, suffix:
     card = render_card(node_id, role, graph)
     (path / ".task_card.md").write_text(card, encoding="utf-8")
     model = model or model_for(role)
-    started = dt.datetime.now(dt.timezone.utc)
+    started = dt.datetime.now(dt.UTC)
     claimed = role == "implementer" and status.get(node_id) == "todo"
     if claimed:
         status[node_id] = "in_progress"
         save_status(status)
 
     proc = subprocess.run(claude_command(card, model, unattended), cwd=path, text=True, capture_output=True, check=False)
-    ended = dt.datetime.now(dt.timezone.utc)
+    ended = dt.datetime.now(dt.UTC)
     result: dict = {}
     try:
         result = json.loads(proc.stdout) if proc.stdout.strip() else {}
@@ -418,7 +418,7 @@ def open_pr(node_id: str) -> None:
 def usage_report() -> str:
     if not RUNS.exists():
         return "no runs yet"
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
     windows = {"last 5 hours": dt.timedelta(hours=5), "last 7 days": dt.timedelta(days=7)}
     rows = [json.loads(line) for line in RUNS.read_text().splitlines() if line.strip()]
     runs = [r for r in rows if r.get("event") == "run"]

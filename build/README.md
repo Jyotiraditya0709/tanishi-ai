@@ -13,7 +13,7 @@ This folder turns the master plan into work the AI engineering swarm can do in p
 | `arena/` | Builder Arena v0: ten real tasks for measuring the coding agents. Hidden tests live in a separate private repo. |
 
 Root files in the kit: `CLAUDE.md` (rules every agent loads), `.github/workflows/ci.yml` (the gates),
-`.github/CODEOWNERS` (your review on protected paths), `scripts/check_protected_paths.py`, `tests/build/test_graph.py`.
+`.github/CODEOWNERS` (your review on protected paths), `scripts/check_protected_paths.py`, `tests/build_kit/test_graph.py`.
 
 ## Day 1, in order
 
