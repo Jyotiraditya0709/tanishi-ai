@@ -27,12 +27,14 @@ from tanishi.core_state.events import redact
 
 _LONE_SURROGATE = re.compile("[\ud800-\udfff]")
 
-# Beyond these words a status is opaque text, but it must be lowercase with no surrounding blanks, so "DONE"
-# or " done" cannot pass for done in the caller's eyes while next_step() re-runs the step.
+# Beyond these words a status is opaque text, but it must be printable ASCII with no capitals and no blanks,
+# so "DONE", " done", "done​" or a Cyrillic "dоne" cannot pass for done in the caller's eyes while
+# next_step() re-runs the step.
 PENDING = "pending"
 RUNNING = "running"
 DONE = "done"
 FAILED = "failed"
+_PLAIN_STATUS = re.compile(r"[!-@\[-~]+")  # printable ASCII except space and A-Z
 
 _STEP_FIELDS = ("id", "description", "status", "model", "result_ref")
 
@@ -90,10 +92,11 @@ def _check_json(value: object, where: str) -> None:
             _check_json(item, f"{where}[{i}]")
         return
     if isinstance(value, dict):
-        for k, item in value.items():
+        # Keys are named by position, never quoted: a key can itself be a secret.
+        for i, (k, item) in enumerate(value.items()):
             if type(k) is not str:
-                raise TypeError(f"{where}: key {k!r} is not a str")
-            _check_json(item, f"{where}[{k!r}]")
+                raise TypeError(f"{where}: key #{i} is a {type(k).__name__}, not a str")
+            _check_json(item, f"{where}[key #{i}]")
         return
     raise TypeError(f"{where}: {type(value).__name__} is not plain JSON")
 
@@ -110,7 +113,8 @@ def _without_secrets(value: Any) -> Any:
     kept exactly, lone surrogates and all, so state without secrets still round-trips unchanged."""
     if isinstance(value, str):
         clean = _LONE_SURROGATE.sub("�", value)  # what redact() does to them anyway
-        return redact(clean) if redact(clean) != clean else value
+        hidden = redact(clean)
+        return hidden if hidden != clean else value
     if isinstance(value, list):
         return [_without_secrets(item) for item in value]
     if isinstance(value, dict):
@@ -119,8 +123,9 @@ def _without_secrets(value: Any) -> Any:
             key = _without_secrets(k)
             while key in out:  # two redacted keys must not overwrite each other
                 key = f"{key}#"
-            # A key such as "password" or "api_key": redact() hides any value under it; here, only text values.
-            named_secret = isinstance(item, str) and item and [*redact({k: 1}).values()] == ["[REDACTED]"]
+            # Under a key such as "password" or "api_key", any value but None and "" is hidden whole, dict and
+            # list included: the rule events.redact() uses, asked of redact() itself so the two cannot drift.
+            named_secret = item is not None and item != "" and [*redact({k: 1}).values()] == ["[REDACTED]"]
             out[key] = "[REDACTED]" if named_secret else _without_secrets(item)
         return out
     return value
@@ -143,18 +148,24 @@ def _validate_shape(state: TaskState) -> None:
     _check_text(state.task_id, "task_id")
     if not state.task_id.strip():
         raise ValueError("task_id must not be blank")
+    # A task id that looks like a secret is stored as given (red-team R3, still open): refusing it fails the
+    # red-team test, which wants save() to succeed (open-problems/SUB1-repair-conflicts.md).
     _check_type(state.working, dict, "working")
     _check_json(state.working, "working")
     _check_type(state.plan, Plan, "plan")
     _check_type(state.plan.steps, list, "plan.steps")
+    seen_ids = set()
     for i, step in enumerate(state.plan.steps):
         _check_type(step, Step, f"plan.steps[{i}]")
         for name in _STEP_FIELDS:
             _check_text(getattr(step, name), f"plan.steps[{i}].{name}", optional=name in ("model", "result_ref"))
-        # Step ids are not checked for emptiness or uniqueness: the exam round-trips both
-        # (open-problems/SUB1-repair-conflicts.md). Steps are identified by position.
-        if not step.status or step.status != step.status.strip().lower():
-            raise ValueError(f"plan.steps[{i}].status {step.status!r} must be non-empty lowercase with no blanks")
+        if not step.id.strip():
+            raise ValueError(f"plan.steps[{i}].id must not be blank")
+        if step.id in seen_ids:
+            raise ValueError(f"plan.steps[{i}].id repeats the id of an earlier step")
+        seen_ids.add(step.id)
+        if not _PLAIN_STATUS.fullmatch(step.status):
+            raise ValueError(f"plan.steps[{i}].status {step.status!a} must be plain lowercase ASCII, no blanks")
     _check_type(state.goal_ids, list, "goal_ids")
     for i, goal_id in enumerate(state.goal_ids):
         _check_text(goal_id, f"goal_ids[{i}]")
@@ -196,6 +207,8 @@ def load(task_id: str) -> TaskState:
 
     Raises LookupError if it was never saved, ValueError if the stored row is not a state save() could write.
     """
+    if isinstance(task_id, str) and _LONE_SURROGATE.search(task_id):  # SQLite cannot encode it; save() refuses it
+        raise LookupError("no saved state for a task id with a lone surrogate")
     with closing(_connect()) as conn:
         row = conn.execute(
             "SELECT working, plan, goal, hypotheses FROM substrate_state WHERE task_id = ?", (task_id,)

@@ -167,10 +167,45 @@ def test_secrets_are_redacted_everywhere_but_plain_text_is_kept_exactly():
     assert s.working["password"] == "hunter2"  # save did not alter its argument
 
 
-@pytest.mark.parametrize("status", ["DONE", "Done", " done", "done\n", ""])
-def test_status_must_be_lowercase_without_blanks(status):
+@pytest.mark.parametrize("status", ["DONE", "Done", " done", "done\n", "", "done\u200b", "dоne", "do ne"])
+def test_status_must_be_plain_lowercase_ascii(status):
     with pytest.raises(ValueError):
         save(_state(plan=Plan(steps=[Step(id="a", description="x", status=status)])))
+
+
+@pytest.mark.parametrize("status", ["skipped", "waiting:tool", "retry-2", "in_progress"])
+def test_other_plain_statuses_round_trip(status):
+    s = _state(plan=Plan(steps=[Step(id="a", description="x", status=status)]))
+    save(s)
+    assert load("t") == s
+
+
+@pytest.mark.parametrize("ids", [["a", "a"], [""], [" "], ["a", "b", "a"]])
+def test_step_ids_must_be_unique_and_not_blank(ids):
+    with pytest.raises(ValueError):
+        save(_state(plan=Plan(steps=[Step(id=i, description="x") for i in ids])))
+
+
+def test_any_value_under_a_secret_key_is_hidden():
+    working = {"password": {"value": "hunter2"}, "auth": ["material"], "token": 987654321,
+               "api_key": None, "secret": "", "nested": {"credentials": [{"user": "u", "pw": "p4ss"}]}}
+    save(_state(working=working))
+    raw = _raw("working")
+    assert "hunter2" not in raw and "material" not in raw and "987654321" not in raw and "p4ss" not in raw
+    got = load("t").working
+    assert got["password"] == got["auth"] == got["token"] == got["nested"]["credentials"] == "[REDACTED]"
+    assert got["api_key"] is None and got["secret"] == ""  # nothing to hide, kept as given
+
+
+def test_error_message_does_not_quote_dict_keys():
+    with pytest.raises(TypeError) as e:
+        save(_state(working={"ok": {"API_KEY=hunter2hunter2": object()}}))
+    assert "hunter2" not in str(e.value) and "working[key #0][key #0]" in str(e.value)
+
+
+def test_load_of_lone_surrogate_id_is_lookup_error():
+    with pytest.raises(LookupError):
+        load("a\ud800")
 
 
 @pytest.mark.parametrize("task_id", [" ", "\t\n"])
