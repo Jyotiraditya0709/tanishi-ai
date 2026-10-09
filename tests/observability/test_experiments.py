@@ -103,6 +103,31 @@ def test_verdict_explains_itself():
     assert isinstance(v, Verdict) and not v and "noise" in v.reason
 
 
+def test_zero_noise_gain_must_clear_the_floor():
+    # Deterministic arms measure noise 0; the 0.01 floor still applies, and "larger than" is strict.
+    assert not is_real_gain([0.5] * 3, [0.505] * 3).real
+    assert not is_real_gain([0.0] * 3, [0.01] * 3).real
+    v = is_real_gain([0.5] * 3, [0.52] * 3)
+    assert v.real and v.threshold == pytest.approx(0.01)
+
+
+def test_threshold_is_the_biggest_of_noise_min_effect_and_floor():
+    assert is_real_gain([0.5] * 3, [0.6] * 3, min_effect=0.05).threshold == pytest.approx(0.05)
+    assert is_real_gain([0.5] * 3, [0.6] * 3, min_effect=0.001).threshold == pytest.approx(0.01)
+    assert not is_real_gain([0.5] * 3, [0.6] * 3, min_effect=0.1).real  # equal to min_effect is not larger
+
+
+def test_unpaired_lists_are_refused():
+    with pytest.raises(ValueError, match="unpaired"):
+        is_real_gain([0.1, 0.1, 0.1], [0.9, 0.9, 0.9, 0.9])
+
+
+@pytest.mark.parametrize("bad", [True, "0.5", None])
+def test_non_number_scores_are_refused(bad):
+    with pytest.raises(ValueError):
+        is_real_gain([0.5, 0.5, bad], [0.9, 0.9, 0.9])
+
+
 def test_negative_min_effect_is_refused():
     with pytest.raises(ValueError):
         is_real_gain([0.5] * 3, [0.6] * 3, min_effect=-0.1)

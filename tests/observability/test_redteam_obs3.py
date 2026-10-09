@@ -17,7 +17,6 @@ def conn(tmp_path):
     c.close()
 
 
-@pytest.mark.xfail(strict=True, reason="redteam OBS3 break; remove marker when fixed")
 def test_zero_noise_arms_accept_a_tiny_gain():
     # Deterministic arms (e.g. the seed is ignored) give noise 0, so threshold 0: any gain is "real".
     assert not is_real_gain([0.5, 0.5, 0.5], [0.5001, 0.5001, 0.5001]).real
@@ -105,7 +104,6 @@ def test_ablate_nan_raises():
         ablate("v", ["a"], lambda v, applied: math.nan)
 
 
-@pytest.mark.xfail(strict=True, reason="redteam OBS3 break; remove marker when fixed")
 def test_is_real_gain_rejects_bool_scores():
     with pytest.raises((ValueError, TypeError)):
         is_real_gain([True, False, True], [1, 1, 1])
