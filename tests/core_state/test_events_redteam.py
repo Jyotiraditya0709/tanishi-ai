@@ -140,7 +140,6 @@ def test_concurrent_processes_and_threads_do_not_fork_the_chain(tmp_path):
 
 # ---------- audit evasion: input that makes emit() raise (the wiring then fails open) ----------
 
-@BREAK
 def test_lone_surrogate_in_a_payload_is_still_logged(conn):
     """E1: '\\ud800' passes json.dumps(ensure_ascii=False) and then dies in .encode('utf-8'). A tool input
     or user message carrying one is not logged at all (the wiring swallows the error)."""
@@ -148,7 +147,6 @@ def test_lone_surrogate_in_a_payload_is_still_logged(conn):
     assert [e.kind for e in iter_events()] == ["tool_call"]
 
 
-@BREAK
 def test_deeply_nested_tool_input_is_still_logged(conn):
     """E2: a tool input nested 3000 deep runs the tool, but redact() hits RecursionError, the wiring swallows
     it, and no tool_call event exists. A model (or an injected prompt) can hide a call by nesting it."""
@@ -164,7 +162,6 @@ def test_deeply_nested_tool_input_is_still_logged(conn):
     assert "tool_call" in [e.kind for e in iter_events()]
 
 
-@BREAK
 def test_deeply_nested_payload_is_logged_not_dropped(conn):
     """E2b: redact() recurses without a bound; 1000+ levels raise RecursionError and the event is lost."""
     deep: object = "x"
@@ -195,7 +192,7 @@ LEAKS = {
 }
 
 
-@pytest.mark.parametrize("name", [pytest.param(n, marks=BREAK) for n in sorted(LEAKS)])
+@pytest.mark.parametrize("name", sorted(LEAKS))
 def test_secret_shapes_in_free_text(conn, name):
     text = LEAKS[name]
     emit("tool_call", {"input": text})
@@ -215,16 +212,13 @@ def test_secret_shapes_in_free_text(conn, name):
 @pytest.mark.parametrize(
     "payload,needle",
     [
-        pytest.param(*case, marks=BREAK)
-        for case in (
-            ({"password": {"value": "hunter2hunter2"}}, "hunter2hunter2"),
-            ({"password": ["hunter2hunter2"]}, "hunter2hunter2"),
-            ({"password": 123456789}, "123456789"),
-            ({"token": "abcdef0123456789abcdef"}, "abcdef0123456789abcdef"),
-            ({"headers": {"Authorization": "Basic dXNlcjpwYXNzd29yZDEyMw=="}}, "dXNlcjpwYXNzd29yZDEyMw"),
-            ({"cookie": "session=abcdef0123456789abcdef"}, "abcdef0123456789abcdef"),
-            ({"credentials": "abcdef0123456789abcdef"}, "abcdef0123456789abcdef"),
-        )
+        ({"password": {"value": "hunter2hunter2"}}, "hunter2hunter2"),
+        ({"password": ["hunter2hunter2"]}, "hunter2hunter2"),
+        ({"password": 123456789}, "123456789"),
+        ({"token": "abcdef0123456789abcdef"}, "abcdef0123456789abcdef"),
+        ({"headers": {"Authorization": "Basic dXNlcjpwYXNzd29yZDEyMw=="}}, "dXNlcjpwYXNzd29yZDEyMw"),
+        ({"cookie": "session=abcdef0123456789abcdef"}, "abcdef0123456789abcdef"),
+        ({"credentials": "abcdef0123456789abcdef"}, "abcdef0123456789abcdef"),
     ],
 )
 def test_secret_values_under_secret_looking_keys(conn, payload, needle):
@@ -332,7 +326,6 @@ def test_tool_output_with_odd_types_does_not_break_execute(conn):
         assert res.tool_name == name
 
 
-@BREAK
 def test_tool_input_is_clipped_like_tool_output(conn):
     """P1: output is clipped to 4000 chars, input is not. One write_file of 5 MB puts 5 MB in the log,
     twice hashed, and every verify_chain pays for it for ever."""

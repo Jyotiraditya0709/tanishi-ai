@@ -6,10 +6,13 @@ byte changed in any column, a deleted row, or an inserted row breaks the chain a
 The first row links to "GENESIS". The `events` triggers (decision 0007) stop honest UPDATE and DELETE;
 the chain is what catches someone who drops them.
 
-Payloads are redacted for API-key patterns before they are hashed or written.
+Payloads are redacted for secrets before they are hashed or written, and bounded so their content can
+never make emit() fail: lone surrogates are replaced, nesting is capped at MAX_DEPTH and every string
+is clipped to MAX_CHARS (decision 0008).
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import re
@@ -36,14 +39,36 @@ _SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("huggingface", re.compile(r"(?<![A-Za-z0-9])hf_[A-Za-z0-9]{30,}")),
     ("private_key", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)")),
     ("bearer", re.compile(r"(?i)(?<=bearer )[A-Za-z0-9._~+/\-]{20,}=*")),
+    ("jwt", re.compile(r"(?<![A-Za-z0-9_\-])eyJ[A-Za-z0-9_\-]{4,}\.[A-Za-z0-9_\-]{4,}\.[A-Za-z0-9_\-]+")),
 )
-# `api_key=...`, `"password": "..."` and the like inside free text: the value goes, the name stays.
-_ASSIGNED_SECRET = re.compile(
-    r"(?i)((?:api[_-]?key|secret|password|passwd|access[_-]?token|auth[_-]?token)['\"]?\s*[:=]\s*['\"]?)"
-    r"([^\s'\",;]{8,})"
+# Secrets inside free text where the name, not the shape, gives them away: the value goes, the name stays.
+# Each pattern starts on a literal (a secret word, "authorization", "://"), so a long hostile string
+# cannot make it backtrack quadratically.
+_ASSIGNED_SECRETS: tuple[re.Pattern[str], ...] = (
+    # `SECRET_KEY=...`, `AWS_SECRET_ACCESS_KEY=...`, `"password": "..."`, `?token=...`: any value length.
+    re.compile(r"(?i)((?:api[_-]?key|secret|password|passwd|token|private[_-]?key|credential)[\w-]*"
+               r"['\"]?\s*[:=]\s*['\"]?)([^\s'\",;&]+)"),
+    # `Authorization: Basic ...` (or Bearer, Digest, Token): the credential after the scheme.
+    re.compile(r"(?i)(authorization['\"]?\s*[:=]\s*['\"]?(?:(?:basic|bearer|digest|token|negotiate)\s+)?)"
+               r"([^\s'\",;]+)"),
+    # `scheme://user:password@host`: the password.
+    re.compile(r"(://[^\s/:@]*:)([^\s/@]+)(?=@)"),
+    # `?sig=...`, `&access_key=...` and other credential-named URL parameters.
+    re.compile(r"(?i)([?&][\w-]{0,40}?(?:key|sig|signature|auth)[\w-]{0,40}=)([^&\s#'\"]+)"),
 )
-# A string value under one of these dict keys is a secret, whatever it looks like.
-_SECRET_KEY = re.compile(r"(?i)api[_-]?key|secret|password|passwd|private[_-]?key|access[_-]?token|auth[_-]?token")
+# `Basic <base64 of user:password>` without an Authorization header in front of it.
+_BASIC_CREDENTIAL = re.compile(r"(?i)(?<![A-Za-z0-9])basic\s+([A-Za-z0-9+/]{8,}={0,2})(?![A-Za-z0-9+/=])")
+# Any value under one of these dict keys is a secret, whatever its type or shape.
+_SECRET_KEY = re.compile(
+    r"(?i)api[_-]?key|secret|password|passwd|private[_-]?key|access[_-]?token|auth[_-]?token"
+    r"|(?<![a-z])(?:token|cookie|credentials?|authorization|bearer|auth)(?![a-z])"
+)
+_LONE_SURROGATE = re.compile("[\ud800-\udfff]")
+
+# Bounds on what one event may hold, so payload content can never make emit() fail or bloat the log.
+MAX_DEPTH = 32  # a container nested deeper than this becomes _TOO_DEEP
+MAX_CHARS = 4000  # every string is clipped to this many characters, after redaction
+_TOO_DEEP = "[TRUNCATED: nested too deep]"
 
 
 @dataclass(frozen=True)
@@ -59,27 +84,56 @@ class Event:
 
 
 def redact(value: Any) -> Any:
-    """A copy of `value` with every API-key-shaped string (and dict key) replaced by a marker."""
+    """A copy of `value` with every secret-shaped string (and dict key) replaced by a marker.
+
+    Never raises on content: lone surrogates become U+FFFD and containers nested deeper than
+    MAX_DEPTH become a marker string. Values that are not JSON (objects, NaN) pass through as they are.
+    """
+    return _scrub(value, 1, None)
+
+
+def _scrub(value: Any, depth: int, limit: int | None) -> Any:
     if isinstance(value, str):
-        return _redact_text(value)
+        return _clean_text(value, limit)
+    if not isinstance(value, (dict, list, tuple)):
+        return value
+    if depth > MAX_DEPTH:
+        return _TOO_DEEP
     if isinstance(value, dict):
         out: dict[Any, Any] = {}
         for k, v in value.items():
-            key = _redact_text(k) if isinstance(k, str) else k
-            while key in out:  # two redacted keys must not overwrite each other
+            key = _clean_text(k, limit) if isinstance(k, str) else k
+            while key in out:  # two redacted or clipped keys must not overwrite each other
                 key = f"{key}#"
             secret_name = isinstance(k, str) and _SECRET_KEY.search(k)
-            out[key] = "[REDACTED]" if secret_name and isinstance(v, str) and v else redact(v)
+            out[key] = "[REDACTED]" if secret_name and v is not None and v != "" else _scrub(v, depth + 1, limit)
         return out
-    if isinstance(value, (list, tuple)):
-        return [redact(v) for v in value]
-    return value
+    return [_scrub(v, depth + 1, limit) for v in value]
+
+
+def _clean_text(text: str, limit: int | None = MAX_CHARS) -> str:
+    """Lone surrogates replaced, secrets redacted, then clipped: a cut never leaves half a key."""
+    text = _redact_text(_LONE_SURROGATE.sub("�", text))
+    if limit is None or len(text) <= limit:
+        return text
+    tail = f"... [{len(text) - limit} more chars]"
+    return text[:max(limit - len(tail), 0)] + tail
 
 
 def _redact_text(text: str) -> str:
     for name, pattern in _SECRET_PATTERNS:
         text = pattern.sub(f"[REDACTED:{name}]", text)
-    return _ASSIGNED_SECRET.sub(lambda m: m.group(1) + "[REDACTED]", text)
+    for pattern in _ASSIGNED_SECRETS:
+        text = pattern.sub(lambda m: m.group(1) + "[REDACTED]", text)
+    return _BASIC_CREDENTIAL.sub(_redact_basic, text)
+
+
+def _redact_basic(m: re.Match[str]) -> str:
+    try:
+        decoded = base64.b64decode(m.group(1), validate=True).decode("utf-8")
+    except (ValueError, UnicodeDecodeError):  # binascii.Error is a ValueError
+        return m.group(0)
+    return m.group(0).replace(m.group(1), "[REDACTED]") if ":" in decoded else m.group(0)
 
 
 def _canonical(id_: int, ts: str, kind: str, actor: str, session_id: str | None, payload: str | None,
@@ -114,9 +168,9 @@ def emit(kind: str, payload: dict, actor: str = "tanishi", session_id: str | Non
         raise TypeError("actor must be a str")
     if session_id is not None and not isinstance(session_id, str):
         raise TypeError("session_id must be a str or None")
-    text = json.dumps(redact(payload), ensure_ascii=False, allow_nan=False)
-    kind, actor = _redact_text(kind), _redact_text(actor)
-    session_id = None if session_id is None else _redact_text(session_id)
+    text = json.dumps(_scrub(payload, 1, MAX_CHARS), ensure_ascii=False, allow_nan=False)
+    kind, actor = _clean_text(kind), _clean_text(actor)
+    session_id = None if session_id is None else _clean_text(session_id)
 
     conn = _open()
     try:

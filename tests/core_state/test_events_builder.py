@@ -1,5 +1,6 @@
 """Builder's tests for CS2, beside the exam in test_events.py: the edges the exam leaves open."""
 import asyncio
+import base64
 import json
 import logging
 import sqlite3
@@ -92,10 +93,40 @@ def test_bad_header_fields_are_rejected(conn, bad):
     assert _payloads(conn) == []
 
 
-def test_lone_surrogate_writes_nothing(conn):
-    with pytest.raises(ValueError):
-        emit("a", {"s": "\ud800"})
-    assert _payloads(conn) == []
+def test_lone_surrogates_are_replaced_everywhere(conn):
+    emit("a\udc80", {"s": "x\ud800y", "\udfff": 1}, actor="b\ud800", session_id="s\ud800")
+    e = next(iter_events())
+    assert (e.kind, e.actor, e.session_id) == ("a�", "b�", "s�")
+    assert e.payload == {"s": "x�y", "�": 1}
+    assert verify_chain(conn) == (True, None)
+
+
+def test_nesting_deeper_than_the_cap_becomes_a_marker(conn):
+    deep: object = "x"
+    for _ in range(ev.MAX_DEPTH + 5):
+        deep = [deep]
+    emit("a", deep)
+    stored = next(iter_events()).payload
+    for _ in range(ev.MAX_DEPTH):
+        assert isinstance(stored, list)
+        stored = stored[0]
+    assert stored == ev._TOO_DEEP
+
+
+def test_redact_alone_never_hits_the_recursion_limit():
+    deep: object = {}
+    for _ in range(5000):
+        deep = {"k": deep}
+    assert "TRUNCATED" in json.dumps(redact(deep))
+
+
+def test_every_string_and_key_is_clipped_after_redaction(conn):
+    key = "gh" + "p_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+    emit("a", {"v": "y" * 3900 + " " + key + " " + "y" * 50, "k" * 9000: ["z" * 9000]})
+    (_, v), (long_key, (long_item,)) = next(iter_events()).payload.items()
+    assert len(v) <= ev.MAX_CHARS and "REDACTED" in v and key[:12] not in v
+    assert len(long_key) <= ev.MAX_CHARS and len(long_item) <= ev.MAX_CHARS
+    assert long_item.endswith("more chars]")
 
 
 # ---------------------------------------------------------------- redaction
@@ -128,6 +159,26 @@ def test_values_under_secret_named_keys_are_redacted(key):
 
 def test_counts_under_token_like_keys_are_kept():
     assert redact({"max_tokens": 512, "access_token": None}) == {"max_tokens": 512, "access_token": None}
+
+
+@pytest.mark.parametrize("key", ["author", "csrftoken_name", "tokens_used", "authority", "oauth_provider"])
+def test_keys_that_only_contain_a_secret_word_are_kept(key):
+    assert redact({key: "plain"}) == {key: "plain"}
+
+
+@pytest.mark.parametrize("text", [
+    "a basic understanding of the problem",
+    "see https://example.com/path?page=2&sort=asc",
+    "ssh://host.example.com:22/repo and http://localhost:8080/x",
+    "basic misunderstandings happen",
+])
+def test_ordinary_text_near_the_new_patterns_is_kept(text):
+    assert redact(text) == text
+
+
+def test_basic_credential_without_a_header_is_redacted():
+    cred = base64.b64encode(b"user:pa55word").decode()
+    assert cred not in redact(f"curl with basic {cred} here")
 
 
 def test_kind_actor_and_session_are_redacted_too(conn):
