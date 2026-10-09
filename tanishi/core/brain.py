@@ -10,8 +10,10 @@ This loop continues until Claude has a final text response.
 
 import asyncio
 import json
+import logging
 import re
 import threading
+import uuid
 import warnings
 import httpx
 import anthropic
@@ -20,9 +22,20 @@ from dataclasses import dataclass, field
 
 from tanishi.config import routing as routing_cfg
 from tanishi.core import get_config
+from tanishi.core_state.events import emit
 from tanishi.core.personality import get_system_prompt
 from tanishi.memory.manager import MemoryManager
 from tanishi.tools.registry import ToolRegistry, ToolResult
+
+logger = logging.getLogger(__name__)
+
+
+def _record(kind: str, payload: dict) -> None:
+    """Emit an event; a broken log must not break the conversation (decision 0008)."""
+    try:
+        emit(kind, payload)
+    except Exception as e:  # noqa: BLE001 - never log the payload: it is the user's own text
+        logger.warning("could not record %s event: %s", kind, type(e).__name__)
 
 
 @dataclass
@@ -217,7 +230,30 @@ class TanishiBrain:
         1. Send message + tools to Claude
         2. If Claude returns tool_use -> execute tool -> send result back
         3. Repeat until Claude returns a text response
+
+        The task is recorded in the Core State event log: task_start before, task_end after,
+        even when it fails.
         """
+        task_id = uuid.uuid4().hex
+        _record("task_start", {"task_id": task_id, "input": user_input, "mood": mood})
+        response: BrainResponse | None = None
+        error = ""
+        try:
+            response = await self._think(user_input, mood, style, extra_context)
+            return response
+        except BaseException as e:
+            error = f"{type(e).__name__}: {e}"
+            raise
+        finally:
+            _record("task_end", {
+                "task_id": task_id,
+                "success": response is not None,
+                "model_used": response.model_used if response else None,
+                "tools_used": list(response.tools_used) if response else [],
+                "error": error,
+            })
+
+    async def _think(self, user_input: str, mood: str, style: str, extra_context: str) -> BrainResponse:
         model = self._select_model(user_input)
 
         skill_block = ""

@@ -14,10 +14,39 @@ with the final answer incorporating the tool's output.
 import asyncio
 import json
 import inspect
+import logging
 from typing import Any, Callable, Optional
 from dataclasses import dataclass, field
 
 from tanishi.config import tool_params as tool_cfg
+from tanishi.core_state.events import emit, redact
+
+logger = logging.getLogger(__name__)
+
+# Tool output can be a whole web page; the log keeps the start of it.
+_MAX_LOGGED_CHARS = 4000
+
+
+def _record(kind: str, payload: dict) -> None:
+    """Emit an event; a broken log must not break the tool call (decision 0008)."""
+    try:
+        emit(kind, payload)
+    except Exception as e:  # noqa: BLE001 - never log the payload: it may hold what we failed to redact
+        logger.warning("could not record %s event: %s", kind, type(e).__name__)
+
+
+def _jsonable(value: Any) -> Any:
+    try:
+        return json.loads(json.dumps(value, allow_nan=False))
+    except (TypeError, ValueError):
+        return {"unserialisable": _clip(redact(repr(value)))}
+
+
+def _clip(text: str) -> str:
+    """Cut after redacting, so a cut can never leave half a key that no pattern matches."""
+    if len(text) <= _MAX_LOGGED_CHARS:
+        return text
+    return text[:_MAX_LOGGED_CHARS] + f"... [{len(text) - _MAX_LOGGED_CHARS} more chars]"
 
 
 @dataclass
@@ -108,8 +137,27 @@ class ToolRegistry:
         """
         Execute a tool by name with given input.
 
-        Returns ToolResult with the output or error.
+        Returns ToolResult with the output or error. Every call is recorded in the
+        Core State event log as a tool_call event followed by a tool_result event.
         """
+        _record("tool_call", {"tool": tool_name, "input": _jsonable(tool_input)})
+        result: ToolResult | None = None
+        try:
+            result = await self._execute(tool_name, tool_input)
+            return result
+        finally:
+            if result is None:  # cancelled, or the approval callback raised
+                _record("tool_result", {"tool": tool_name, "success": False, "error": "did not finish"})
+            else:
+                _record("tool_result", {
+                    "tool": tool_name,
+                    "success": result.success,
+                    "output": _clip(redact(result.output)),
+                    "error": _clip(redact(result.error)),
+                    "ms": round(result.execution_time_ms, 1),
+                })
+
+    async def _execute(self, tool_name: str, tool_input: dict) -> ToolResult:
         import time
         start = time.time()
 
