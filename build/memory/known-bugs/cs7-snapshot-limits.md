@@ -15,3 +15,19 @@
   as not answered from memory.
 - [ ] **snapshot() waits up to 5 s** for long readers to let the WAL checkpoint finish, then raises. A reader that holds a
   read transaction open for longer blocks the nightly snapshot.
+- [ ] **The Continuity Test is an oracle.** `run()` gives each hidden question to the answerer in plain text and says how many
+  were right. A candidate that may call it repeatedly can learn the answers by trial. Run the vault file only from a
+  process the candidate cannot call, and never hand it the result or `missed` (which holds personal question text).
+- [ ] **Answers must be the bare fact.** Matching is whole-answer after normalising (repair round, R7). When the brain answers
+  in prose ("It was X"), it fails. The brain-side answerer must extract the bare answer, or the matching must be loosened
+  under a new rule that keeps the R4/R6/R7 red-team tests passing. The exam docstring still says "contains"; no exam
+  test needs that, so nothing conflicts today.
+- [ ] **Old bundles may be restored** (rollback). By design for now; the nightly node should choose by manifest
+  `created_at`, not file mtime.
+- [ ] **quick_check holds the write lock.** snapshot() runs `PRAGMA quick_check` inside `BEGIN IMMEDIATE`, so writers wait for
+  a full scan of the db. Milliseconds today; for a large db, check a copy instead.
+- [ ] **Restorable on the same OS.** A bundle from POSIX with `\` in a skill name is refused on Windows, and two skill names
+  that differ only by case are refused (as `SnapshotError`) on a case-insensitive filesystem.
+- [ ] **Sweeping is best effort.** Debris is swept only on the next snapshot() into the same destination or restore() beside
+  the same parent. A reused pid delays the sweep. Staging made by code before the repair round (`.snapshot-*.part`,
+  `.<home>.restore-*`) has no pid in its name and is never swept; delete it by hand. On Windows the sweep goes by age (24 h).
