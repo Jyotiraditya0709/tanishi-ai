@@ -1,0 +1,114 @@
+# Builder Arena v0: ten real Tanishi tasks used to measure the coding agents.
+# Each is given to 2-3 agents from different models (orchestrator.py arena-run).
+# Hidden acceptance tests live in the separate private repo tanishi-builder-vault, never here.
+# BA-01 to BA-06 are also node SEC1, so the winners get merged.
+
+tasks:
+  - id: BA-01
+    title: Empty answer must deny a tool approval
+    files: [tanishi/cli.py]
+    statement: >-
+      In the CLI approval prompt (_approve_tool), pressing Enter with no answer currently approves the tool.
+      Make only an explicit yes approve. Anything else, including empty input, EOF and Ctrl-C, denies.
+    visible_acceptance:
+      - Empty input denies.
+      - "'y' and 'yes' (any case, surrounding spaces) approve; everything else denies."
+      - EOF and KeyboardInterrupt deny without crashing the CLI.
+
+  - id: BA-02
+    title: Never auto-retry a tool that changes the world
+    files: [tanishi/tools/registry.py, tanishi/config/tool_params.py]
+    statement: >-
+      ToolRegistry.execute() retries every tool up to 3 times, so a slow send_email or finance write can happen
+      three times. Retry only tools marked idempotent. Side-effecting tools run once and report the failure.
+    visible_acceptance:
+      - Tools carry an idempotent flag; the default is False.
+      - A non-idempotent tool that times out is called exactly once.
+      - An idempotent read tool that fails twice and succeeds the third time returns the success.
+
+  - id: BA-03
+    title: Telegram bot fails closed
+    files: [tanishi/bridges/telegram_bot.py]
+    statement: >-
+      With TELEGRAM_ALLOWED_IDS unset the bot serves anyone, and /status and /memory skip the allowlist.
+      Make the allowlist required, apply it to every command and callback, and let only the owner approve tools.
+    visible_acceptance:
+      - With the variable unset, the bot refuses to start and says why.
+      - A message or button press from a user id not on the list gets no answer and no tool runs.
+      - An approval button can be pressed only by the user id that owns the session.
+
+  - id: BA-04
+    title: API binds to localhost and requires a token
+    files: [tanishi/api/server.py, tanishi/core/__init__.py]
+    statement: >-
+      The server binds 0.0.0.0 with CORS * and no auth. Default the host to 127.0.0.1, restrict CORS to the
+      dashboard origin, and require a bearer token (TANISHI_API_TOKEN) on every route and on the WebSocket
+      whenever the host is not loopback.
+    visible_acceptance:
+      - Default bind is 127.0.0.1.
+      - With a non-loopback host and no token configured, the server refuses to start.
+      - Requests without the right token get 401; the WebSocket closes with code 1008.
+
+  - id: BA-05
+    title: read_file cannot read secrets
+    files: [tanishi/tools/]
+    statement: >-
+      read_file, list_directory and search_files can read ~/.ssh, .env files and key files. Add a deny list
+      checked after resolving symlinks and .. segments.
+    visible_acceptance:
+      - Paths under ~/.ssh, ~/.gnupg, ~/.aws, any .env file, and *.pem, *.key, id_* files are refused.
+      - A symlink pointing into a denied path is refused.
+      - Ordinary project files still read.
+
+  - id: BA-06
+    title: Block SSRF and local files in web tools
+    files: [tanishi/tools/web_search.py, tanishi/tools/browser_agent.py]
+    statement: >-
+      fetch_webpage and browse_url accept file:// and internal addresses. Allow only http and https to public
+      addresses, checked after DNS resolution and again after every redirect.
+    visible_acceptance:
+      - file://, ftp:// and data: URLs are refused.
+      - localhost, 127.0.0.0/8, 10/8, 172.16/12, 192.168/16, 169.254/16, ::1 and fc00::/7 are refused, including through redirects.
+      - A normal public https page still fetches.
+
+  - id: BA-07
+    title: Tool-needing prompts never go to a tool-less model
+    files: [tanishi/core/brain.py, tanishi/config/routing.py]
+    statement: >-
+      With LOCAL_FIRST on and Ollama running, short prompts go to the local model, which has no tools, so tool use
+      silently drops. When a prompt is likely to need a tool, route it to a tool-capable model, and log the reason.
+    visible_acceptance:
+      - "\"what's the time\" and \"read my notes file\" are routed to a tool-capable model even when Ollama is up."
+      - A plain chat line with privacy mode on still goes to the local model.
+      - Every routing decision is logged with its reason.
+
+  - id: BA-08
+    title: Expenses logged in the same second must not overwrite each other
+    files: [tanishi/tools/finance.py]
+    statement: >-
+      Expense ids are exp_<YYYYmmdd_HHMMSS> written with INSERT OR REPLACE, so two expenses in one second
+      overwrite each other. Use unique ids and plain INSERT.
+    visible_acceptance:
+      - Two expenses added in the same second are both stored.
+      - Existing rows keep working after the change.
+
+  - id: BA-09
+    title: Salt and stretch stored passwords
+    files: [tanishi/memory/trust.py]
+    statement: >-
+      Passwords are stored as unsalted SHA-256. Use hashlib.scrypt with a random salt per password, verify in
+      constant time, and upgrade an old hash the next time its password is verified correctly.
+    visible_acceptance:
+      - Two identical passwords produce different stored hashes.
+      - verify accepts the right password and rejects a wrong one.
+      - An old SHA-256 hash still verifies once, then is replaced by an scrypt hash.
+
+  - id: BA-10
+    title: A cache write failure must not fail a good search
+    files: [tanishi/tools/web_search.py]
+    statement: >-
+      When writing search_cache.json fails, a successful search is reported as "Search failed". Make the cache
+      best-effort: log the write error and return the results.
+    visible_acceptance:
+      - With the cache path unwritable, a search returns its results.
+      - The write error is logged once, not raised.

@@ -44,3 +44,10 @@ runner.*
 .agents/
 _bmad/
 skills-lock.json
+
+# The build kit lives in /build. Keep packaging output out of it.
+!/build/
+!/tests/build/
+/build/lib/
+/build/bdist.*/
+/build/temp.*/

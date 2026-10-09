@@ -1,0 +1,10 @@
+# Which model each role uses. Start here, then change it from Builder Arena scores (node B3), not from rankings.
+# Values are passed to `claude --model`. Aliases such as opus and sonnet resolve to the current model of that family.
+roles:
+  orchestrator: opus
+  architect: opus
+  implementer: opus
+  tester: sonnet
+  researcher: sonnet
+  redteam: sonnet        # a different model from the author; swap in another vendor or a local model when available
+  integrator: opus
