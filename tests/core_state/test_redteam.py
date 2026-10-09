@@ -167,7 +167,6 @@ def test_default_path_is_not_the_real_home_when_tests_forget_the_env(monkeypatch
 
 # ---------- schema: integrity ----------
 
-@BREAK
 def test_events_are_append_only(conn):
     """R9: the hash chain is only as good as the table. UPDATE/DELETE on events succeed, so history can be rewritten."""
     conn.execute("INSERT INTO events(ts,kind,prev_hash,hash) VALUES ('t','a','GENESIS','h1')")
@@ -176,14 +175,12 @@ def test_events_are_append_only(conn):
     assert _rejects(lambda: conn.execute("DELETE FROM events WHERE id=1"))
 
 
-@BREAK
 def test_event_chain_cannot_fork(conn):
     """R10: two events with the same prev_hash (two writers that both read the tail) are accepted."""
     conn.execute("INSERT INTO events(ts,kind,prev_hash,hash) VALUES ('t','a','GENESIS','h1')")
     assert _rejects(lambda: conn.execute("INSERT INTO events(ts,kind,prev_hash,hash) VALUES ('t','b','GENESIS','h2')"))
 
 
-@BREAK
 def test_event_ids_are_never_reused(conn):
     """R11: INTEGER PRIMARY KEY without AUTOINCREMENT reuses the top id after a delete, so evidence.event_id can
     silently point at a different event."""
@@ -194,20 +191,17 @@ def test_event_ids_are_never_reused(conn):
     assert conn.execute("SELECT max(id) FROM events").fetchone()[0] == 3
 
 
-@BREAK
 def test_evidence_cannot_dangle(conn):
     """R12: foreign_keys=ON is vacuous, no FK is declared. Evidence for a belief/event that does not exist is accepted,
     and deleting a belief leaves its evidence behind (a wrong belief's support survives)."""
     assert _rejects(lambda: conn.execute("INSERT INTO evidence(id,belief_id,event_id) VALUES ('e','nope',999)"))
 
 
-@BREAK
 def test_text_primary_keys_reject_null(conn):
     """R13: SQLite allows NULL in a non-INTEGER PRIMARY KEY. Unlimited un-addressable rows with id NULL."""
     assert _rejects(lambda: conn.execute("INSERT INTO beliefs(id,subject) VALUES (NULL,'a')"))
 
 
-@BREAK
 def test_confidence_must_be_a_number_between_0_and_1(conn):
     """R14: REAL affinity is advisory. 'high', 5 and -3 all land in beliefs.confidence."""
     for i, bad in enumerate(("high", 5, -3, float("nan"))):
@@ -216,7 +210,6 @@ def test_confidence_must_be_a_number_between_0_and_1(conn):
         ), f"accepted confidence {bad!r}"
 
 
-@BREAK
 def test_json_columns_must_be_valid_json(conn):
     """R15: decision 0006 made JSON columns TEXT but dropped the CHECK(json_valid()) that open-problems/CS1.md suggested.
     Garbage payloads are stored, and json.loads blows up later at read time."""
@@ -225,7 +218,6 @@ def test_json_columns_must_be_valid_json(conn):
 
 # ---------- performance ----------
 
-@BREAK
 def test_hot_lookups_use_an_index(conn):
     """R16: no secondary index anywhere. Every lookup the DAL will make is a full scan."""
     queries = [
