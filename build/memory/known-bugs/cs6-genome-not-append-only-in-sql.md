@@ -7,6 +7,10 @@ Not fixed in CS6: the fix is a new migration (0001 is frozen), and the CS1 exam 
 `tests/core_state/test_db.py` and `tests/core_state/test_migrations.py`. A `0002` would fail those tests, and the
 implementer may not change them.
 
+Status (repair round, 2026-10-09): **still open.** The human's plan: a later migration, after CS4's `0002` merges, adds
+triggers for `genome` and `events` together. Red-team proofs G7 and G7b stay xfailed until then. G7b also wants a
+`BEFORE INSERT` trigger checking `json_extract(record,'$.version') = version AND json_extract(record,'$.parent') IS parent`.
+
 Fix, once the CS1 exam owner lets the schema version move past 1:
 
 ```sql
