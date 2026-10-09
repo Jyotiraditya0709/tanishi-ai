@@ -92,7 +92,6 @@ def test_surrogate_text_is_refused_without_a_partial_write():
 
 # ---------- breaks ----------
 
-@BREAK
 def test_retire_reason_is_not_copied_verbatim_into_the_event_log():
     """R1 (medium): reason is free text from the caller and is stored whole in events.payload. CLAUDE.md: no secrets
     or personal data in events; decision 0008 point 2 protects belief text but not the reason. A secret pasted into
@@ -103,7 +102,6 @@ def test_retire_reason_is_not_copied_verbatim_into_the_event_log():
     assert all("SECRETSECRET" not in p for p in payloads)
 
 
-@BREAK
 def test_evidence_event_id_must_be_an_int():
     """R2 (low): True is accepted as event id 1 and silently links evidence to the wrong event (bool is an int).
     Smallest fix: reject bool and non-int in _add, as _clamp already does for confidence."""
@@ -116,13 +114,11 @@ def test_evidence_event_id_must_be_an_int():
         B.add_belief("s", "p", "o", 0.5, "t", evidence_event_id=True)
 
 
-@BREAK
 def test_huge_int_confidence_is_clamped_not_overflowed():
     """R3 (low): the spec says clamp. float(10**400) raises OverflowError, which is neither of the documented errors."""
     assert B.add_belief("s", "p", "o", 10**400, "t").confidence == 1.0
 
 
-@BREAK
 def test_case_and_whitespace_variants_still_contradict():
     """R4 (medium, already in known-bugs as 'matching is exact'): ("User","name","Al") vs ("user","name","Bob") are
     kept as two active, uncontested beliefs, so the contradiction check is evaded by spelling. This is the common
@@ -142,7 +138,6 @@ def test_identical_triple_is_not_stored_twice():
     assert len(B.find(subject="d")) == 1 and a.id
 
 
-@BREAK
 def test_contradictions_ignores_a_forged_belief_object():
     """R6 (low): contradictions() trusts the caller's subject/predicate/object, so a Belief with an unknown id
     reports 'conflicts' with real rows. Smallest fix: look the row up by id and use the stored fields; raise on unknown."""
@@ -151,7 +146,6 @@ def test_contradictions_ignores_a_forged_belief_object():
     assert B.contradictions(forged) == []
 
 
-@BREAK
 def test_evidence_can_be_read_back():
     """R7 (design): no function lists a belief's evidence, so the 'every belief has evidence' goal is write-only and
     the next node (retrieval, M1) has to open the table by hand. Passes once an accessor exists."""
@@ -160,7 +154,6 @@ def test_evidence_can_be_read_back():
 
 # ---------- importer ----------
 
-@BREAK
 def test_importer_one_undecodable_row_does_not_block_every_other_row(tmp_path):
     """R8 (medium): a single legacy TEXT value that is not valid UTF-8 raises inside legacy_rows(); nothing at all is
     imported and the script exits 1. Legacy rows are free text, so this will happen. Smallest fix: read with
@@ -176,7 +169,6 @@ def test_importer_one_undecodable_row_does_not_block_every_other_row(tmp_path):
     assert "good" in {b.predicate for b in B.find()}
 
 
-@BREAK
 def test_importer_reverted_legacy_value_does_not_leave_the_stale_value_live(tmp_path):
     """R9 (medium): legacy city Lisbon -> Porto -> Lisbon. The importer never retires, and Lisbon's id already exists,
     so the final state is Lisbon + Porto both live and contested while legacy says only Lisbon. Every legacy edit
