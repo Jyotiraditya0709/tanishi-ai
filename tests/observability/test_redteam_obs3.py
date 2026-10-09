@@ -44,7 +44,6 @@ def test_rerun_of_same_seed_is_one_sample_not_three(conn):
         record_run(conn, Run("a", "t", 1), 0.2, baseline="a", candidate="b")
 
 
-@pytest.mark.xfail(strict=True, reason="redteam OBS3 break; remove marker when fixed")
 def test_seed_missing_in_one_arm_is_not_misaligned(conn):
     for seed in (1, 2, 3):
         record_run(conn, Run("a", "t", seed), 0.5, baseline="a", candidate="b")
@@ -54,7 +53,6 @@ def test_seed_missing_in_one_arm_is_not_misaligned(conn):
     assert len(base) == len(cand)
 
 
-@pytest.mark.xfail(strict=True, reason="redteam OBS3 break; remove marker when fixed")
 def test_partial_tasks_for_a_seed_bias_the_mean(conn):
     record_run(conn, Run("a", "easy", 1), 1.0, baseline="a", candidate="b")
     record_run(conn, Run("a", "hard", 1), 0.0, baseline="a", candidate="b")
@@ -63,19 +61,16 @@ def test_partial_tasks_for_a_seed_bias_the_mean(conn):
     assert base == cand
 
 
-@pytest.mark.xfail(strict=True, reason="redteam OBS3 break; remove marker when fixed")
 def test_nan_cost_not_silently_nulled(conn):
     with pytest.raises(ValueError):
         record_run(conn, Run("a", "t", 1), 0.5, baseline="a", candidate="b", cost=float("nan"))
 
 
-@pytest.mark.xfail(strict=True, reason="redteam OBS3 break; remove marker when fixed")
 def test_fractional_seeds_do_not_collide(conn):
     with pytest.raises(ValueError):
         record_run(conn, Run("a", "t", 1.9), 0.9, baseline="a", candidate="b")
 
 
-@pytest.mark.xfail(strict=True, reason="redteam OBS3 break; remove marker when fixed")
 def test_bool_seed_rejected(conn):
     with pytest.raises((ValueError, TypeError)):
         record_run(conn, Run("a", "t", True), 0.5, baseline="a", candidate="b")
@@ -87,7 +82,6 @@ def test_string_tasks_not_split_into_characters():
     assert {r.task for r in runs} == {"abc"}
 
 
-@pytest.mark.xfail(strict=True, reason="redteam OBS3 break; remove marker when fixed")
 def test_arm_names_that_stringify_equal_are_rejected():
     with pytest.raises(ValueError):
         interleave(1, "1", ["t"], [1, 2, 3])

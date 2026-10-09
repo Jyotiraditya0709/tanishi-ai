@@ -35,24 +35,68 @@ def test_ledger_round_trip_feeds_is_real_gain(conn):
 
 
 def test_seed_scores_average_tasks_per_seed(conn):
-    for task, score in (("t1", 0.2), ("t2", 0.4)):
-        record_run(conn, Run("a", task, 7), score, baseline="a", candidate="b")
-    record_run(conn, Run("b", "t1", 7), 0.9, baseline="a", candidate="b")
-    assert seed_scores(conn, "a", "b") == ([pytest.approx(0.3)], [0.9])
+    for arm, task, score in (("a", "t1", 0.2), ("a", "t2", 0.4), ("b", "t1", 0.9), ("b", "t2", 0.7)):
+        record_run(conn, Run(arm, task, 7), score, baseline="a", candidate="b")
+    out = seed_scores(conn, "a", "b")
+    assert out == ([pytest.approx(0.3)], [pytest.approx(0.8)]) and out.dropped == []
 
 
 def test_seed_scores_keeps_experiments_apart(conn):
     record_run(conn, Run("a", "t", 1), 0.1, baseline="a", candidate="b")
+    record_run(conn, Run("b", "t", 1), 0.5, baseline="a", candidate="b")
     record_run(conn, Run("a", "t", 1), 0.9, baseline="a", candidate="c")
-    assert seed_scores(conn, "a", "b") == ([0.1], [])
+    assert seed_scores(conn, "a", "b") == ([0.1], [0.5])
 
 
-def test_record_run_rejects_foreign_arm_and_nan(conn):
+def test_seed_scores_drops_unpaired_seeds_and_reports_them(conn):
+    for seed in (1, 2, 3, 4):
+        record_run(conn, Run("a", "t1", seed), 0.5, baseline="a", candidate="b")
+    for seed in (1, 3, 4):
+        record_run(conn, Run("b", "t1", seed), 0.9, baseline="a", candidate="b")
+    record_run(conn, Run("a", "t2", 4), 0.0, baseline="a", candidate="b")  # b never ran t2 on seed 4
+    base, cand = out = seed_scores(conn, "a", "b")
+    assert base == [0.5, 0.5] and cand == [0.9, 0.9]
+    assert out.dropped == [2, 4]
+
+
+def test_record_run_refuses_a_second_row_for_the_same_run(conn):
+    record_run(conn, Run("a", "t", 1), 0.1, baseline="a", candidate="b")
+    with pytest.raises(ValueError, match="new arm label"):
+        record_run(conn, Run("a", "t", 1), 0.9, baseline="a", candidate="b")
+    # the same run in another experiment, task or seed is a different row
+    record_run(conn, Run("a", "t", 1), 0.9, baseline="a", candidate="c")
+    record_run(conn, Run("a", "u", 1), 0.9, baseline="a", candidate="b")
+    record_run(conn, Run("a", "t", 2), 0.9, baseline="a", candidate="b")
+    assert conn.execute("SELECT COUNT(*) FROM experiments").fetchone()[0] == 4
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"run": Run("x", "t", 1)},
+        {"score": float("nan")},
+        {"score": True},
+        {"score": "0.5"},
+        {"run": Run("a", "t", 1.0)},
+        {"run": Run("a", "t", False)},
+        {"run": Run("a", "t", "1")},
+        {"cost": float("inf")},
+        {"cost": -0.01},
+        {"cost": True},
+        {"cost": "1"},
+    ],
+)
+def test_record_run_rejects_bad_input(conn, kwargs):
+    args = {"run": Run("a", "t", 1), "score": 0.5, **kwargs}
+    cost = args.pop("cost", None)
     with pytest.raises(ValueError):
-        record_run(conn, Run("x", "t", 1), 0.5, baseline="a", candidate="b")
-    with pytest.raises(ValueError):
-        record_run(conn, Run("a", "t", 1), float("nan"), baseline="a", candidate="b")
+        record_run(conn, args["run"], args["score"], baseline="a", candidate="b", cost=cost)
     assert conn.execute("SELECT COUNT(*) FROM experiments").fetchone()[0] == 0
+
+
+def test_record_run_keeps_a_valid_cost(conn):
+    record_run(conn, Run("a", "t", 1), 1, baseline="a", candidate="b", cost=0)
+    assert conn.execute("SELECT score, cost FROM experiments").fetchone() == (1.0, 0.0)
 
 
 # ---------------------------------------------------------------- interleave
@@ -71,9 +115,16 @@ def test_interleave_rejects_repeats(tasks, seeds):
         interleave("a", "b", tasks, seeds)
 
 
-def test_interleave_rejects_identical_arms():
+@pytest.mark.parametrize(("baseline", "candidate"), [("a", "a"), (1, "1")])
+def test_interleave_rejects_arms_the_ledger_cannot_tell_apart(baseline, candidate):
     with pytest.raises(ValueError):
-        interleave("a", "a", ["t"], [1, 2, 3])
+        interleave(baseline, candidate, ["t"], [1, 2, 3])
+
+
+@pytest.mark.parametrize(("tasks", "seeds"), [("abc", [1, 2, 3]), (["t"], "123"), (["t"], [1, 2.0, 3]), (["t"], [True])])
+def test_interleave_rejects_strings_and_non_int_seeds(tasks, seeds):
+    with pytest.raises(ValueError):
+        interleave("a", "b", tasks, seeds)
 
 
 # ---------------------------------------------------------------- attribution edges
