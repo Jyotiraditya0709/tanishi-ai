@@ -33,3 +33,11 @@ autoresearch_results/snapshots/
 
 # Logs
 *.log
+
+data/*.sqlite
+*.db
+.env
+tanishi/tools/search_cache.json
+proactive_state.json
+autoresearch_results/snapshots/
+runner.*
