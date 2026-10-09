@@ -267,8 +267,8 @@ class MemoryManager:
         conn.commit()
         conn.close()
 
-    def get_session_history(self, session_id: str) -> list[dict]:
-        """Get conversation history for a session."""
+    def get_session_history(self, session_id: str, limit: int | None = None) -> list[dict]:
+        """Get conversation history for a session (oldest first)."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         cursor.execute("""
@@ -278,6 +278,8 @@ class MemoryManager:
         """, (session_id,))
         results = [{"role": r[0], "content": r[1], "timestamp": r[2]} for r in cursor.fetchall()]
         conn.close()
+        if limit is not None and limit > 0:
+            results = results[-limit:]
         return results
 
     # ============================================================

@@ -29,6 +29,7 @@ from prompt_toolkit.history import FileHistory
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.styles import Style as PTStyle
 
+from tanishi.config.models import CLAUDE_DEFAULT
 from tanishi.core import get_config
 from tanishi.core.chat_context import chat_extra_context
 from tanishi.core.brain import TanishiBrain
@@ -166,7 +167,7 @@ def run_dependency_check() -> int:
 class TanishiCLI:
     """The terminal interface for Project Tanishi — now with tools."""
 
-    def __init__(self):
+    def __init__(self, new_session: bool = False):
         self.config = get_config()
 
         # Initialize tool registry
@@ -187,7 +188,29 @@ class TanishiCLI:
         # Self-improvement engine
         self.improve_engine = SelfImproveEngine(self.config.tanishi_home)
 
-        self.session_id = str(uuid.uuid4())[:8]
+        last_session_path = self.config.tanishi_home / "last_session"
+        if new_session:
+            self.session_id = str(uuid.uuid4())[:8]
+        elif last_session_path.is_file():
+            saved = last_session_path.read_text(encoding="utf-8").strip()
+            self.session_id = saved if saved else str(uuid.uuid4())[:8]
+        else:
+            self.session_id = str(uuid.uuid4())[:8]
+
+        try:
+            last_session_path.write_text(self.session_id, encoding="utf-8")
+        except Exception:
+            pass
+
+        if not new_session:
+            restored = self.brain.load_session_history(self.session_id, max_turns=30)
+            if restored:
+                import sys
+                print(
+                    f"[session] restored {restored} messages for session {self.session_id}",
+                    file=sys.stderr,
+                )
+
         self.user_name = self.memory.get_core("user_name") or None
 
         # Input history
@@ -786,7 +809,7 @@ class TanishiCLI:
             engine = MultiAgentEngine(
                 self.brain.claude_client,
                 self.tool_registry,
-                self.config.claude_model if hasattr(self.config, 'claude_model') else "claude-sonnet-4-20250514",
+                self.config.claude_model if hasattr(self.config, 'claude_model') else CLAUDE_DEFAULT,
             )
             engine.on_status = lambda msg: console.print(f"  [bold magenta]{msg}[/bold magenta]")
 
@@ -867,7 +890,7 @@ class TanishiCLI:
             console.print(f"\n[yellow]Voice dependencies missing![/yellow]")
             console.print(f"[yellow]Missing module: {missing}[/yellow]\n")
             console.print("Install voice dependencies:\n")
-            console.print("[bold]pip install SpeechRecognition edge-tts pyttsx3 sounddevice pygame[/bold]\n")
+            console.print("[bold]pip install numpy SpeechRecognition edge-tts pyttsx3 sounddevice pygame-ce[/bold]\n")
             console.print("For GPU-accelerated local transcription (recommended with your GPU):")
             console.print("[bold]pip install faster-whisper[/bold]\n")
             console.print("Then try [bold]/voice[/bold] again.")
@@ -1033,6 +1056,11 @@ def main():
 
     parser = argparse.ArgumentParser(description="Tanishi CLI")
     parser.add_argument(
+        "--new-session",
+        action="store_true",
+        help="Start a fresh CLI session id (ignore last_session resume file).",
+    )
+    parser.add_argument(
         "--check-deps",
         action="store_true",
         help="Validate optional dependencies and key env vars, then exit.",
@@ -1042,7 +1070,7 @@ def main():
     try:
         if args.check_deps:
             raise SystemExit(run_dependency_check())
-        cli = TanishiCLI()
+        cli = TanishiCLI(new_session=args.new_session)
         asyncio.run(cli.run())
     except KeyboardInterrupt:
         console.print(f"\n[cyan]Tanishi:[/cyan] Goodbye!\n")

@@ -26,6 +26,7 @@ from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 from typing import Optional
 
+from tanishi import __version__
 from tanishi.core import get_config
 from tanishi.core.chat_context import chat_extra_context
 from tanishi.core.brain import TanishiBrain
@@ -79,7 +80,9 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"[embeddings] pre-warm skipped: {e}")
 
-    # Tools
+    # Tools — no approval callback: registry is fail-closed, so high-risk tools
+    # (run_command, send_email, write_file, kill_process, control_system) are
+    # intentionally DENIED in the API context (no human approver). By design.
     registry = ToolRegistry()
     register_all_tools(None, registry)
     SkillLoader().load_all(Path(__file__).resolve().parents[1] / "skills", registry)
@@ -111,7 +114,7 @@ async def lifespan(app: FastAPI):
     print("\n💤 Tanishi going to sleep...")
 
 
-app = FastAPI(title="Project Tanishi", version="0.4.0", lifespan=lifespan)
+app = FastAPI(title="Project Tanishi", version=__version__, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -227,6 +230,7 @@ async def chat(request: ChatRequest):
         raise HTTPException(status_code=503, detail="Brain not initialized")
 
     session_id = request.session_id or str(uuid.uuid4())
+    brain.switch_session(session_id, max_turns=30)
     extra_context = chat_extra_context(memory, brain.tool_registry)
 
     response = await brain.think(
@@ -234,6 +238,12 @@ async def chat(request: ChatRequest):
         mood=request.mood,
         extra_context=extra_context,
     )
+
+    if memory:
+        memory.log_message(session_id, "user", request.message)
+        memory.log_message(
+            session_id, "assistant", response.content, response.model_used
+        )
 
     # Auto-learn from conversation
     try:
@@ -257,16 +267,22 @@ async def chat(request: ChatRequest):
 @app.websocket("/ws")
 async def websocket_chat(websocket: WebSocket):
     await websocket.accept()
+    ws_session_id = str(uuid.uuid4())
     try:
         while True:
             data = await websocket.receive_text()
             user_message = ""
+            session_id = ws_session_id
             try:
                 obj = json.loads(data)
-                if isinstance(obj, dict) and isinstance(obj.get("message"), str):
-                    user_message = obj["message"]
+                if isinstance(obj, dict):
+                    if isinstance(obj.get("message"), str):
+                        user_message = obj["message"]
+                    if isinstance(obj.get("session_id"), str) and obj["session_id"].strip():
+                        session_id = obj["session_id"].strip()
+                        ws_session_id = session_id
             except json.JSONDecodeError:
-                user_message = ""
+                user_message = data
 
             if not user_message:
                 await websocket.send_text(
@@ -281,11 +297,20 @@ async def websocket_chat(websocket: WebSocket):
                 continue
 
             try:
+                brain.switch_session(session_id, max_turns=30)
                 ws_ctx = chat_extra_context(memory, brain.tool_registry)
+                assembled = ""
                 async for frame in brain.stream_think(user_message, extra_context=ws_ctx):
-                    await websocket.send_text(
-                        json.dumps(frame)
-                    )
+                    await websocket.send_text(json.dumps(frame))
+                    if isinstance(frame, dict) and frame.get("type") == "chunk":
+                        assembled += frame.get("text") or ""
+                if brain.conversation_history:
+                    last = brain.conversation_history[-1]
+                    if last.role == "assistant":
+                        assembled = last.content or assembled
+                if memory:
+                    memory.log_message(session_id, "user", user_message)
+                    memory.log_message(session_id, "assistant", assembled, "")
             except Exception as e:
                 await websocket.send_text(
                     json.dumps({"type": "error", "detail": str(e)})
