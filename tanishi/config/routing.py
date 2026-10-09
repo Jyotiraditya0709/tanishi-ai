@@ -1,9 +1,10 @@
 """Model routing config. Mutated by autoresearch."""
 
+from tanishi.config.models import CLAUDE_COMPLEX, CLAUDE_SIMPLE
+
 # Which model to use for different query types
-SIMPLE_QUERY_MODEL = "claude-haiku-4-5-20251001"
-COMPLEX_QUERY_MODEL = "claude-opus-4-6"
-LOCAL_MODEL = "ollama:llama3.1"
+SIMPLE_QUERY_MODEL = CLAUDE_SIMPLE
+COMPLEX_QUERY_MODEL = CLAUDE_COMPLEX
 
 # Try local model first for chitchat?
 LOCAL_FIRST = True

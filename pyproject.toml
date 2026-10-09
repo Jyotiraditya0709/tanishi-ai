@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "project-tanishi"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Autonomous Personal AI System — Sarcastic, Self-Improving, Loyal"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -25,6 +25,7 @@ dependencies = [
     "cryptography>=43.0.0",
     "apscheduler>=3.10.4",
     "psutil>=5.9.0",
+    "requests>=2.31",
 ]
 
 [project.optional-dependencies]
@@ -36,6 +37,9 @@ all = ["project-tanishi[memory,voice,offline]"]
 [project.scripts]
 tanishi = "tanishi.cli:main"
 tanishi-server = "tanishi.api.server:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "tanishi.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["tanishi*"]
