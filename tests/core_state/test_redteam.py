@@ -48,7 +48,6 @@ def _rejects(fn) -> bool:
 
 # ---------- migration runner ----------
 
-@BREAK
 def test_trailing_block_comment_in_migration_is_legal_sql(monkeypatch, tmp_path):
     """R1: _only_comments knows `--` but not `/* */`, so a footer comment makes migrate() raise."""
     _use_migrations(monkeypatch, tmp_path, {"0001_a.sql": "CREATE TABLE a(x);\n/* end of 0001 */\n"})
@@ -76,7 +75,6 @@ def test_statement_splitter_survives_semicolons_in_comments_strings_triggers(mon
     assert c.execute("SELECT 1 FROM sqlite_master WHERE name='b'").fetchone()
 
 
-@BREAK
 def test_misnamed_migration_file_is_not_silently_ignored(monkeypatch, tmp_path):
     """R2: `0002_Add-B.sql` fails the name regex and is skipped; the schema change never applies, no error."""
     _use_migrations(
@@ -93,7 +91,6 @@ def test_misnamed_migration_file_is_not_silently_ignored(monkeypatch, tmp_path):
     assert "b" in tables and version == 2, "0002 silently skipped"
 
 
-@BREAK
 def test_migration_with_explicit_commit_cannot_break_atomicity(monkeypatch, tmp_path):
     """R3: a COMMIT; inside a migration file ends the transaction early; the later failure leaves table a behind."""
     _use_migrations(
@@ -108,7 +105,6 @@ def test_migration_with_explicit_commit_cannot_break_atomicity(monkeypatch, tmp_
     assert "a" not in tables and "schema_version" not in tables
 
 
-@BREAK
 def test_edited_applied_migration_is_detected(monkeypatch, tmp_path):
     """R4: no checksum of applied migrations, so editing 0001 after it ran drifts the schema silently."""
     _use_migrations(monkeypatch, tmp_path, {"0001_a.sql": "CREATE TABLE schema_version(version INTEGER PRIMARY KEY, applied_at TEXT);"})
@@ -121,7 +117,6 @@ def test_edited_applied_migration_is_detected(monkeypatch, tmp_path):
         migrate(c)
 
 
-@BREAK
 def test_schema_version_row_without_tables_is_not_trusted(conn, tmp_path):
     """R5: a hand-made schema_version row for 1 makes migrate() report 1 with no tables at all."""
     c = sqlite3.connect(":memory:")
@@ -137,7 +132,6 @@ def test_schema_version_row_without_tables_is_not_trusted(conn, tmp_path):
 
 # ---------- open_db ----------
 
-@BREAK
 def test_db_and_dir_are_private(tmp_path):
     """R6: the file holding conversations/beliefs is created 0644 in a 0755 dir; other local users can read it."""
     p = tmp_path / "newdir" / "core_state.db"
@@ -148,7 +142,6 @@ def test_db_and_dir_are_private(tmp_path):
     assert stat.S_IMODE(os.stat(p.parent).st_mode) & 0o077 == 0
 
 
-@BREAK
 def test_symlink_to_legacy_db_is_refused(tmp_path):
     """R7: the legacy-db guard checks the file NAME only; a symlink with another name opens tanishi.db."""
     legacy = tmp_path / "tanishi.db"
