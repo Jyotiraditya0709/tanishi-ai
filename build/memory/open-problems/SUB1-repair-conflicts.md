@@ -1,5 +1,7 @@
 # SUB1 repair · where the red-team tests and the exam conflict
 
+**Status:** B2 and B3 are resolved by requiring unique, non-empty step ids (after trimming) and fixing the exam's id generator (`_rand_state` in `tests/substrate/test_state.py`). The id check in `state.py` is still owed by the implementer.
+
 Found in the SUB1 repair round on 2026-10-09. The implementer may not change either test, so these need the human (or
 the tests' owners). The suite has **2 known failures** until this is settled.
 

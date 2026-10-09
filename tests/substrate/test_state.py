@@ -402,13 +402,13 @@ def _rand_text(rng):
 def _rand_state(rng, task_id):
     steps = [
         Step(
-            id=_rand_text(rng),
+            id=f"s{k}-{_rand_text(rng)}",  # unique and non-empty, as the plan requires
             description=_rand_text(rng),
             status=rng.choice([PENDING, DONE, "running", "failed", "skipped"]),
             model=rng.choice([None, "m1", "local/x", _rand_text(rng)]),
             result_ref=rng.choice([None, _rand_text(rng)]),
         )
-        for _ in range(rng.randint(0, 8))
+        for k in range(rng.randint(0, 8))
     ]
     return TaskState(
         task_id=task_id,
@@ -422,6 +422,13 @@ def _rand_state(rng, task_id):
 def _exact(a):
     """Type-exact fingerprint: == alone would confuse 1, 1.0 and True."""
     return json.dumps(a, sort_keys=True, default=lambda o: o.__dict__)
+
+
+@pytest.mark.parametrize("bad_ids", [["a", "a"], ["a", ""], ["a", "   "], ["\t\n"]])
+def test_duplicate_or_blank_step_ids_are_refused(bad_ids):
+    steps = [Step(id=i, description="d", status=PENDING, model="m", result_ref=None) for i in bad_ids]
+    with pytest.raises(ValueError):
+        save(make_state(plan=Plan(steps=steps)))
 
 
 @pytest.mark.parametrize("seed", range(150))
