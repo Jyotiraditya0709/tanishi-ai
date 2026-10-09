@@ -75,6 +75,15 @@ def _check_fields(name: str, value: Any) -> None:
         raise TypeError(f"{name}['success'] must be a bool")
 
 
+def _object(text: str | None) -> dict | None:
+    """A stored JSON column read back as a dict, or None when it holds anything else (5, [1], "x", null).
+
+    The schema only checks json_valid, so a raw write can store a non-object. Readers skip such a row rather
+    than let it break the forecaster and calibration for everyone (red team R4)."""
+    value = json.loads(text) if text else None
+    return value if isinstance(value, dict) else None
+
+
 def _forecast(expected: dict, confidence: float) -> float:
     """Probability of success implied by a prediction."""
     return confidence if expected.get("success") is True else 1.0 - confidence
@@ -194,10 +203,13 @@ def calibration(about_prefix: str) -> dict:
     outcomes: list[list[float]] = [[] for _ in range(N_BINS)]
     scores = []
     for expected_text, confidence, actual_text, score in rows:
-        p = _forecast(json.loads(expected_text) if expected_text else {}, confidence)
+        expected, actual = _object(expected_text), _object(actual_text)
+        if expected is None or actual is None:
+            continue
+        p = _forecast(expected, confidence)
         k = min(int(p * N_BINS), N_BINS - 1)
         forecasts[k].append(p)
-        outcomes[k].append(1.0 if actual_text and json.loads(actual_text).get("success") is True else 0.0)
+        outcomes[k].append(1.0 if actual.get("success") is True else 0.0)
         scores.append(score)
     bins = []
     for k in range(N_BINS):
@@ -212,8 +224,17 @@ def unresolved_older_than(hours: float = STALE_AFTER_HOURS) -> list[dict]:
     """Unresolved predictions made more than `hours` ago, oldest first, as `{"id", "about", "ts", "confidence"}`.
 
     A prediction whose ts cannot be read as a time is listed too: nobody can show it is fresh. Read only.
+    An age no prediction can reach (NaN, inf, beyond the calendar) lists nothing; a hugely negative one lists
+    every unresolved prediction (red team R6).
     """
-    cutoff = datetime.now(UTC) - timedelta(hours=hours)
+    if math.isnan(hours):
+        return []
+    try:
+        cutoff = datetime.now(UTC) - timedelta(hours=hours)
+    except OverflowError:
+        if hours > 0:
+            return []
+        cutoff = datetime.max.replace(tzinfo=UTC)
     conn = _open()
     try:
         rows = conn.execute(
@@ -250,12 +271,15 @@ def tool_forecast(tool_name: str) -> tuple[float, float | None]:
         ).fetchall()
     finally:
         conn.close()
-    successes, latencies = 0, []
+    successes, n, latencies = 0, 0, []
     for (actual_text,) in rows:
-        actual = json.loads(actual_text) if actual_text else {}
+        actual = _object(actual_text)
+        if actual is None:
+            continue
+        n += 1
         successes += actual.get("success") is True
         ms = actual.get("latency_ms")
         if isinstance(ms, (int, float)) and not isinstance(ms, bool) and math.isfinite(ms):
             latencies.append(float(ms))
-    p = (successes + PRIOR_SUCCESS * PRIOR_WEIGHT) / (len(rows) + PRIOR_WEIGHT)
+    p = (successes + PRIOR_SUCCESS * PRIOR_WEIGHT) / (n + PRIOR_WEIGHT)
     return p, (statistics.median(latencies) if latencies else None)

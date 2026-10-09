@@ -130,6 +130,32 @@ def test_tool_forecast_starts_at_the_prior_and_learns_latency():
     assert P.tool_forecast("other") == (pytest.approx(P.PRIOR_SUCCESS), None)
 
 
+def test_rows_with_a_non_object_actual_or_expected_are_skipped_not_counted():
+    good = P.predict("tool:s", {"success": True}, 0.5)
+    P.resolve(good, {"success": True})
+    bad = P.predict("tool:s", {"success": True}, 0.5)
+    odd = P.predict("tool:s", {"success": True}, 0.5)
+    P.resolve(odd, {"success": False})
+    conn = open_db()
+    try:
+        conn.execute("UPDATE predictions SET actual = '[0]', resolved_at = ?, score = 1.0 WHERE id = ?",
+                     (P._now(), bad))
+        conn.execute("UPDATE predictions SET expected = '7' WHERE id = ?", (odd,))
+        conn.commit()
+    finally:
+        conn.close()
+    # the forecaster reads only `actual`: the bad row is skipped, the odd one (bad expected) still counts
+    assert P.tool_forecast("s")[0] == pytest.approx((1 + P.PRIOR_SUCCESS * P.PRIOR_WEIGHT) / (2 + P.PRIOR_WEIGHT))
+    cal = P.calibration("tool:s")
+    assert cal["n"] == 1 and cal["brier"] == pytest.approx(0.25)
+
+
+def test_stale_helper_with_minus_infinity_lists_every_unresolved_prediction():
+    pid = P.predict("tool:x", {"success": True}, 0.5)
+    assert [r["id"] for r in P.unresolved_older_than(float("-inf"))] == [pid]
+    assert P.unresolved_older_than(float("nan")) == [] and P.unresolved_older_than(float("inf")) == []
+
+
 def test_registry_prediction_carries_forecast_and_actual_latency():
     from tanishi.tools.registry import ToolDefinition, ToolRegistry
 
