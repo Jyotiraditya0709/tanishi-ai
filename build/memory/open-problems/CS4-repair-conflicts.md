@@ -13,3 +13,7 @@ The CS1 round-trip exam is no longer a blocker for the owner check: since PR #5 
 ## Status
 
 Open. Both rows need a ruling on a red-team test, not more code.
+
+Status (tester fix, 2026-10-09): G8 and G3 were rewritten to the human's decisions. G8 now checks the 64-level cap
+(a 64-level chain is accepted, the 65th level is refused, at most 2080 rows in goal_ancestors). G3 now expects a raw
+insert with a bad owner to be refused, and is xfail(strict) until the builder adds the owner check.
