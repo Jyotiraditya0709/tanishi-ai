@@ -1,0 +1,46 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . pytest ruff pyyaml hypothesis
+
+      - name: Protected paths
+        if: github.event_name == 'pull_request'
+        run: python scripts/check_protected_paths.py --base origin/${{ github.base_ref }} --branch "${{ github.head_ref }}"
+
+      - name: Build graph is valid
+        run: python build/orchestrator.py validate
+
+      - name: No databases or env files committed
+        run: |
+          if git ls-files | grep -E '(\.sqlite$|\.db$|(^|/)\.env$)'; then
+            echo "A database or .env file is tracked. Remove it."; exit 1
+          fi
+
+      - name: Lint new foundation code
+        run: |
+          ruff check build scripts tests $(ls -d tanishi/core_state tanishi/substrate tanishi/arena tanishi/observability tanishi/mirror 2>/dev/null)
+
+      - name: Tests
+        env:
+          TANISHI_HOME: ${{ runner.temp }}/tanishi-home
+          TANISHI_CORE_STATE_DB: ${{ runner.temp }}/core_state.db
+        run: python -m pytest -q

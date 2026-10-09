@@ -1,0 +1,12 @@
+# Every PR that touches these paths waits for your review. Agents may never change them (CI also enforces this).
+/constitution/                       @Jyotiraditya0709
+/warden/                             @Jyotiraditya0709
+/vault/                              @Jyotiraditya0709
+/reality/                            @Jyotiraditya0709
+/builder_vault/                      @Jyotiraditya0709
+/tanishi/guard/                      @Jyotiraditya0709
+/.github/                            @Jyotiraditya0709
+/CLAUDE.md                           @Jyotiraditya0709
+/build/graph.yaml                    @Jyotiraditya0709
+/build/agents/                       @Jyotiraditya0709
+/scripts/check_protected_paths.py    @Jyotiraditya0709
