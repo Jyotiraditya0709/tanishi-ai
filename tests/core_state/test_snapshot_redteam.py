@@ -36,7 +36,6 @@ def _raise(exc):
     return f
 
 
-@pytest.mark.xfail(strict=True, reason="R1: a backslash in a skill filename snapshots fine but restore refuses the whole bundle")
 def test_r1_every_snapshot_can_be_restored_even_with_odd_skill_names(home, tmp_path):
     fill(home)
     (home / "skills" / "a\\b.py").write_text("x = 1\n")
@@ -45,7 +44,6 @@ def test_r1_every_snapshot_can_be_restored_even_with_odd_skill_names(home, tmp_p
     assert (tmp_path / "back" / "skills" / "a\\b.py").read_text() == "x = 1\n"
 
 
-@pytest.mark.xfail(strict=True, reason="R2: snapshot() and restore() never check database integrity")
 def test_r2_a_corrupt_database_is_not_snapshotted_as_if_fine(home, tmp_path):
     for i in range(400):
         beliefs.add_belief(f"s{i}", "p", f"{MARKER}-{i}" * 20, 0.8, "test")
@@ -61,7 +59,6 @@ def test_r2_a_corrupt_database_is_not_snapshotted_as_if_fine(home, tmp_path):
         snap.snapshot(_dest(tmp_path))  # today it writes a signed, encrypted copy of the damage
 
 
-@pytest.mark.xfail(strict=True, reason="R3: a destination inside skills/ is bundled into the next snapshot, so bundles nest and grow")
 def test_r3_destination_inside_the_home_does_not_feed_the_next_bundle(home, tmp_path):
     fill(home)
     d = home / "skills" / "backups"
@@ -106,7 +103,6 @@ def test_r7_expected_matches_whole_words_only(tmp_path):
     assert not ct.run(qf, tmp_path, lambda q, h: "I don't know").passed
 
 
-@pytest.mark.xfail(strict=True, reason="R8: restore leaks raw OSError for a directory bundle; identity.yaml as a directory crashes snapshot")
 def test_r8_odd_inputs_raise_snapshot_error_not_oserror(home, tmp_path):
     with pytest.raises(snap.SnapshotError):
         snap.restore(tmp_path, tmp_path / "back")

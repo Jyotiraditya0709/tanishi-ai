@@ -3,6 +3,8 @@ import hashlib
 import json
 import os
 import stat
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -162,3 +164,98 @@ def test_explicit_home_argument(home, tmp_path):
     target = tmp_path / "t"
     snap.restore(bundle, target)
     assert (target / "core_state.db").read_bytes() == Path(home / "core_state.db").read_bytes()
+
+
+def _corrupt_db_bytes() -> bytes:
+    for i in range(300):
+        beliefs.add_belief(f"s{i}", "p", f"filler-{i}" * 20, 0.5, "test")
+    raw = bytearray(snap._read_db_consistently(Path(os.environ["TANISHI_CORE_STATE_DB"])))
+    for off in range(8192, len(raw) - 4096, 4096):  # scribble inside data pages, leave the header alone
+        raw[off + 100 : off + 140] = b"\xff" * 40
+    return bytes(raw)
+
+
+def test_corrupt_database_is_refused_with_snapshot_error(home, tmp_path):
+    (home / "core_state.db").write_bytes(_corrupt_db_bytes())
+    d = tmp_path / "d"
+    d.mkdir()
+    with pytest.raises(snap.SnapshotError, match="integrity"):
+        snap.snapshot(d)
+    assert list(d.iterdir()) == []
+
+
+def test_signed_bundle_holding_a_corrupt_database_is_refused(home, tmp_path):
+    evil = tmp_path / "evil.bundle"
+    evil.write_bytes(forge({"core_state.db": _corrupt_db_bytes()}))
+    with pytest.raises(snap.SnapshotError, match="integrity"):
+        snap.restore(evil, tmp_path / "t")
+    assert not (tmp_path / "t").exists()
+    assert [p.name for p in tmp_path.iterdir() if p.name.startswith(".tanishi-restore-")] == []
+
+
+def test_successful_restore_leaves_only_the_home(home, tmp_path):
+    (home / "skills").mkdir()
+    (home / "skills" / "a.py").write_text("x = 1\n")
+    d = tmp_path / "d"
+    d.mkdir()
+    bundle = snap.snapshot(d)
+    parent = tmp_path / "restores"
+    snap.restore(bundle, parent / "t")
+    assert [p.name for p in parent.iterdir()] == ["t"]  # no staging dir, no plaintext db copy beside it
+    assert sorted(p.name for p in (parent / "t").iterdir()) == ["core_state.db", "skills"]  # no -wal / -shm
+
+
+def test_destination_that_is_the_skills_folder_is_refused(home):
+    (home / "skills").mkdir()
+    with pytest.raises(snap.SnapshotError):
+        snap.snapshot(home / "skills")
+    assert list((home / "skills").iterdir()) == []
+
+
+def test_skill_name_that_is_not_utf8_is_refused_at_snapshot(home, tmp_path):
+    (home / "skills").mkdir()
+    try:
+        fd = os.open(os.fsencode(home / "skills") + b"/bad\xff.py", os.O_WRONLY | os.O_CREAT, 0o600)
+    except OSError:
+        pytest.skip("this filesystem refuses non-UTF-8 names, so it cannot hold one")
+    os.close(fd)
+    d = tmp_path / "d"
+    d.mkdir()
+    with pytest.raises(snap.SnapshotError, match="rename it"):
+        snap.snapshot(d)
+    assert list(d.iterdir()) == []
+
+
+@pytest.mark.parametrize("rel", ["skills/bad\udcff.py", "skills/nul\x00.py"])
+def test_capture_rule_refuses_names_restore_could_not_take(rel):
+    with pytest.raises(snap.SnapshotError, match="rename it"):
+        snap._check_capture_path(rel, is_dir=False)
+
+
+def _dead_pid() -> int:
+    p = subprocess.Popen([sys.executable, "-c", "pass"])
+    p.wait()
+    return p.pid
+
+
+@pytest.mark.skipif(os.name != "posix", reason="pid liveness is checked on POSIX only")
+def test_staging_left_by_a_killed_process_is_swept(home, tmp_path):
+    d = tmp_path / "d"
+    d.mkdir()
+    dead = _dead_pid()
+    part = d / f".tanishi-snapshot-{dead}-abc.part"
+    part.write_bytes(b"half a bundle")
+    ours = d / f".tanishi-snapshot-{os.getpid()}-abc.part"  # this process: maybe another thread's, so kept
+    ours.write_bytes(b"in use")
+    bundle = snap.snapshot(d)
+    assert not part.exists() and ours.exists()
+
+    parent = tmp_path / "restores"
+    stale = parent / f".tanishi-restore-{dead}-xyz"
+    stale.mkdir(parents=True)
+    (stale / "core_state.db").write_bytes(b"plaintext copy")
+    unrelated = parent / ".notes.restore-1-x"
+    unrelated.mkdir()
+    snap.restore(bundle, parent / "t")
+    assert not stale.exists()
+    assert unrelated.exists()
