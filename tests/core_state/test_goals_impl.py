@@ -1,20 +1,18 @@
 """Implementer's tests for CS4 goals: what the exam does not reach (subtree moves, old data, input checks)."""
 import random
+import shutil
 import sqlite3
 
 import pytest
 
-from tanishi.core_state import migrate, open_db
-from tanishi.core_state.goals import active_goals, add_goal
+from tanishi.core_state import db, migrate, open_db
+from tanishi.core_state.goals import MAX_LEVELS, active_goals, add_goal
 
 
 @pytest.fixture
 def raw():
-    add_goal("bootstrap", "user")  # installs the tree triggers
     c = open_db()
     migrate(c)
-    c.execute("DELETE FROM goals")
-    c.commit()
     yield c
     c.close()
 
@@ -72,17 +70,99 @@ def test_goal_id_cannot_change(raw):
     raw.rollback()
 
 
-def test_existing_goals_get_their_ancestors_on_install():
+def _at_version_1(tmp_path, monkeypatch):
+    """A db migrated with 0001 only, as before CS4. The patch is undone, so the next migrate() applies 0002."""
+    only_first = tmp_path / "migrations"
+    only_first.mkdir()
+    shutil.copy(db.MIGRATIONS_DIR / "0001_init.sql", only_first)
+    monkeypatch.setattr(db, "MIGRATIONS_DIR", only_first)
     c = open_db()
-    migrate(c)
+    assert migrate(c) == 1
+    monkeypatch.undo()
+    return c
+
+
+def test_migration_fills_ancestors_for_existing_goals(tmp_path, monkeypatch):
+    c = _at_version_1(tmp_path, monkeypatch)
     c.execute("INSERT INTO goals (id, parent_id, owner, status) VALUES ('p', NULL, 'user', 'active')")
     c.execute("INSERT INTO goals (id, parent_id, owner, status) VALUES ('k', 'p', 'user', 'active')")
     c.commit()
-    assert len(active_goals()) == 2  # installs the triggers over the old rows
+    assert migrate(c) == 2
+    assert set(c.execute("SELECT goal_id, ancestor_id FROM goal_ancestors")) == {("p", "p"), ("k", "k"), ("k", "p")}
     with pytest.raises(sqlite3.Error):
         c.execute("UPDATE goals SET parent_id = 'k' WHERE id = 'p'")
     c.rollback()
     c.close()
+
+
+def test_migration_replaces_objects_the_old_goals_module_installed(tmp_path, monkeypatch):
+    """Before 0002, goals.py created goal_ancestors itself. A stale copy must not survive the migration."""
+    c = _at_version_1(tmp_path, monkeypatch)
+    c.execute("INSERT INTO goals (id, parent_id, owner, status) VALUES ('p', NULL, 'user', 'active')")
+    c.execute("CREATE TABLE goal_ancestors (goal_id TEXT NOT NULL, ancestor_id TEXT NOT NULL)")
+    c.execute("INSERT INTO goal_ancestors VALUES ('ghost', 'ghost')")
+    c.execute("CREATE TRIGGER goals_tree_delete AFTER DELETE ON goals BEGIN SELECT 1; END")
+    c.commit()
+    assert migrate(c) == 2
+    assert list(c.execute("SELECT goal_id, ancestor_id FROM goal_ancestors")) == [("p", "p")]
+    c.close()
+
+
+def test_goals_module_needs_only_migrate():
+    add_goal("a", "user")
+    c = open_db()
+    assert c.execute("SELECT MAX(version) FROM schema_version").fetchone()[0] == 2
+    c.close()
+
+
+def test_owner_cannot_change(raw):
+    g = add_goal("hers", "tanishi")
+    with pytest.raises(sqlite3.IntegrityError):
+        raw.execute("UPDATE goals SET owner = 'user' WHERE id = ?", (g.id,))
+    raw.rollback()
+    raw.execute("UPDATE goals SET owner = 'tanishi', title = 'same owner' WHERE id = ?", (g.id,))
+    raw.commit()
+
+
+def test_replace_cannot_change_owner(raw):
+    """REPLACE deletes and re-inserts, so no UPDATE trigger fires. The leftover ancestor row still stops it."""
+    g = add_goal("hers", "tanishi")
+    with pytest.raises(sqlite3.IntegrityError):
+        raw.execute(
+            "INSERT OR REPLACE INTO goals (id, owner, title, rank, status) VALUES (?, 'user', 'x', 1, 'active')",
+            (g.id,),
+        )
+    raw.rollback()
+    assert [x.owner for x in active_goals()] == ["tanishi"]
+
+
+def _chain(n):
+    ids, parent = [], None
+    for i in range(n):
+        parent = add_goal(f"level {i}", "user", parent_id=parent).id
+        ids.append(parent)
+    return ids
+
+
+def test_tree_stops_at_max_levels(raw):
+    chain = _chain(MAX_LEVELS)
+    with pytest.raises(ValueError):
+        add_goal("too deep", "user", parent_id=chain[-1])
+    with pytest.raises(sqlite3.IntegrityError):
+        raw.execute("INSERT INTO goals (id, parent_id, owner, status) VALUES ('x', ?, 'user', 'active')", (chain[-1],))
+    raw.rollback()
+    assert len(active_goals()) == MAX_LEVELS
+
+
+def test_moving_a_subtree_respects_max_levels(raw):
+    host = _chain(40)
+    moved = _chain(30)  # moved[0] is a root with 29 levels below it
+    with pytest.raises(sqlite3.IntegrityError):
+        _reparent(raw, moved[0], host[34])  # host level 35: the deepest would land at 65
+    raw.rollback()
+    _reparent(raw, moved[0], host[33])  # host level 34: the deepest lands at exactly 64
+    level = raw.execute("SELECT COUNT(*) FROM goal_ancestors WHERE goal_id = ?", (moved[-1],)).fetchone()[0]
+    assert level == MAX_LEVELS
 
 
 @pytest.mark.parametrize("seed", range(10))
