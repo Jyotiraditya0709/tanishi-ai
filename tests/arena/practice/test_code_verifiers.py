@@ -1,6 +1,6 @@
 """AR2 exam: the verifiers of the tasks that need no tool, and the judge rules of the style tasks."""
 import pytest
-from practice_helpers import score
+from practice_helpers import plant, score
 
 # name -> (answers that must score 1, answers that must score 0)
 CASES = {
@@ -152,7 +152,9 @@ def test_explain_concept_checks_retrieval_generation_and_length():
     assert score("explain_concept", "")[0] == 0.0
 
 
-def test_memory_recall_wants_blue():
+def test_memory_recall_wants_blue(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    plant(tmp_path)  # setup plants a random color; this one is blue
     assert score("memory_recall", "Your favorite color is blue.")[0] == 1.0
     assert score("memory_recall", "BLUE")[0] == 1.0
     assert score("memory_recall", "Your favorite color is red.")[0] == 0.0

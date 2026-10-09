@@ -18,6 +18,25 @@ def record_call(tool, tool_input=None, output="", success=True, *, finish=True, 
     return call_id
 
 
+# What each task's setup would have planted, as the verifiers read it from $HOME/.arena/truth (the real setup draws
+# these at random per attempt; the exam pins them so the cases below can name them). Keys do not collide across tasks.
+PLANTED = [
+    ("build_id", "QX-4471"),
+    ("count", "7"), *[("log", f"run{i}.log") for i in range(1, 8)],
+    ("target", "c.py"), ("marker", "FIXME-ORCHID"), ("decoy", "a.py"), ("decoy", "b.py"), ("decoy", "d.py"),
+    ("left", "173"), ("right", "269"),
+    ("newest", "COBALT"), ("older", "AMBER"), ("older", "JADE"),
+    ("lines", "12"),
+    ("color", "blue"),
+]
+
+
+def plant(directory):
+    """Write the attempt's record of planted values into `directory` (the verifier's cwd)."""
+    (directory / ".arena").mkdir(exist_ok=True)
+    (directory / ".arena" / "truth").write_text("".join(f"{k}={v}\n" for k, v in PLANTED))
+
+
 def score(name, output):
     """Run a task's verifier the way the runner does and return (score, reason)."""
     task = TASKS[f"practice.{name}"]
@@ -43,12 +62,12 @@ TOOL_CASES = {
     ),
     "count_matching_files": (
         "7",
-        [("list_directory", {"path": "logs"}, "run1.log run2.log run3.log note1.txt")],
+        [("list_directory", {"path": "logs"}, " ".join(f"run{i}.log" for i in range(1, 8)) + " note1.txt note2.txt")],
         "10",
     ),
     "find_todo_file": (
         "c.py",
-        [("search_files", {"directory": "src", "pattern": "*.py", "text": "FIXME-ORCHID"}, "  c.py:3  # FIXME-ORCHID")],
+        [("search_files", {"directory": "src", "pattern": "*.py", "text": "FIXME"}, "  c.py:3  # FIXME-ORCHID")],
         "a.py",
     ),
     "read_two_sum": (

@@ -1,11 +1,26 @@
 id: practice.find_todo_file
 family: tool_use
 tier: practice
-prompt: Which file under src/ contains the marker FIXME-ORCHID? Give just the file name.
+prompt: One file under src/ contains a FIXME marker. Which file is it? Give just the file name.
 setup: |
-  mkdir -p src
-  for n in a b c d; do printf 'def f():\n    return 1\n' > src/$n.py; done
-  printf '# FIXME-ORCHID: tidy this\n' >> src/c.py
+  word() { LC_ALL=C tr -dc "$1" </dev/urandom | head -c "$2"; }
+  n=$(( $(od -An -N2 -tu2 </dev/urandom) % 3 + 4 ))
+  k=$(( $(od -An -N2 -tu2 </dev/urandom) % n ))
+  mark="FIXME-$(word A-Z 6)"
+  mkdir -p src .arena
+  : > .arena/truth
+  i=0
+  while [ "$i" -lt "$n" ]; do
+    f="$(word a-z 6).py"
+    printf 'def f():\n    return %s\n' "$i" > "src/$f"
+    if [ "$i" -eq "$k" ]; then
+      printf '# %s: tidy this\n' "$mark" >> "src/$f"
+      printf 'target=%s\nmarker=%s\n' "$f" "$mark" >> .arena/truth
+    else
+      printf 'decoy=%s\n' "$f" >> .arena/truth
+    fi
+    i=$((i + 1))
+  done
 verifier: tanishi.arena.practice.checks.find_todo_file
 timeout_s: 60
 tags: [practice, tool, "tool:search_files"]

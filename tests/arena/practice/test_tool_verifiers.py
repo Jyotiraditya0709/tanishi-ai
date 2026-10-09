@@ -8,12 +8,19 @@ import random
 import sqlite3
 
 import pytest
-from practice_helpers import TASKS, TOOL_CASES, record_call, score
+from practice_helpers import TASKS, TOOL_CASES, plant, record_call, score
 
 from tanishi.arena.practice import needs_tool
 from tanishi.core_state import open_db
 
 NAMES = sorted(TOOL_CASES)
+
+
+@pytest.fixture(autouse=True)
+def _planted(tmp_path, monkeypatch):
+    """Planted values are random per attempt and read from the attempt's home: give every test one, as setup would."""
+    monkeypatch.chdir(tmp_path)
+    plant(tmp_path)
 
 
 def real_run(name):

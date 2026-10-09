@@ -48,7 +48,7 @@ def _field(text, name):
 
 
 def find_todo_file(brief, candidate, seed):
-    out = _call("search_files", {"directory": "src", "pattern": "*.py", "text": "FIXME-ORCHID"}).output
+    out = _call("search_files", {"directory": "src", "pattern": "*.py", "text": "FIXME"}).output
     return re.search(r"(\w+\.py):\d+", out).group(1)
 
 

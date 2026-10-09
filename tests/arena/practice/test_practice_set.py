@@ -4,6 +4,7 @@ Spec: 9 legacy tasks ported; style tasks keep an LLM judge, tagged judge:llm and
 verifiers and no personal text; at least 8 of the 20 need a tool.
 """
 import re
+import subprocess
 
 import pytest
 
@@ -155,12 +156,39 @@ def test_setup_scripts_stay_inside_the_attempt_home(tasks):
 # --- the planted values in the setup scripts and the verifiers must agree ----------------------------------------
 
 
-@pytest.mark.parametrize("name,token", [
-    ("read_config_value", "QX-4471"),
-    ("find_todo_file", "FIXME-ORCHID"),
-    ("latest_report", "COBALT"),
-    ("read_two_sum", "173"),
-    ("read_two_sum", "269"),
+# RT-AR2-5: the values are random per attempt, so the setup is run and its fixture checked against the record
+# (.arena/truth) the verifier reads, instead of looking for a literal in the task file.
+
+
+def _run_setup(task, directory):
+    subprocess.run(task.setup, shell=True, cwd=directory, check=True, stdout=subprocess.DEVNULL)
+    planted = {}
+    for line in (directory / ".arena" / "truth").read_text().splitlines():
+        key, _, value = line.partition("=")
+        planted.setdefault(key, []).append(value)
+    return planted
+
+
+@pytest.mark.parametrize("name,key,where", [
+    ("read_config_value", "build_id", lambda d, v: f"build_id={v}" in (d / "notes" / "config.txt").read_text()),
+    ("find_todo_file", "marker", lambda d, v: any(v in p.read_text() for p in (d / "src").iterdir())),
+    ("find_todo_file", "target", lambda d, v: "FIXME-" in (d / "src" / v).read_text()),
+    ("latest_report", "newest", lambda d, v: v in max((d / "reports").iterdir()).read_text()),
+    ("read_two_sum", "left", lambda d, v: (d / "data" / "left.txt").read_text().strip() == v),
+    ("read_two_sum", "right", lambda d, v: (d / "data" / "right.txt").read_text().strip() == v),
+    ("count_lines_shell", "lines", lambda d, v: len((d / "data.csv").read_text().splitlines()) == int(v)),
+    ("count_matching_files", "count", lambda d, v: len(list((d / "logs").glob("*.log"))) == int(v)),
+    ("memory_recall", "color", lambda d, v: v in (d / ".tanishi" / "memory" / "user.md").read_text()),
 ])
-def test_setup_plants_the_value_the_verifier_looks_for(by_id, name, token):
-    assert token in by_id[f"practice.{name}"].setup
+def test_setup_plants_the_value_the_verifier_looks_for(by_id, tmp_path, name, key, where):
+    task = by_id[f"practice.{name}"]
+    seen = set()
+    for i in range(6):
+        home = tmp_path / str(i)
+        home.mkdir()
+        values = _run_setup(task, home)[key]
+        assert len(values) == 1, values
+        assert where(home, values[0]), (name, key)
+        assert values[0].casefold() not in task.prompt.casefold()
+        seen.add(values[0])
+    assert len(seen) > 1, f"{name}: {key} is the same in every attempt"
