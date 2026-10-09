@@ -6,12 +6,16 @@ each step completes; after a crash, `load()` returns that state and `Plan.next_s
 
 Only plain JSON goes in: dicts with str keys, lists, str, int, finite float, bool and None. Anything else
 (a tuple, an int key, NaN) is refused on save, because it would not come back unchanged: a wrong type raises
-TypeError, a bad value (NaN, an empty task id, a cycle) raises ValueError.
+TypeError, a bad value (NaN, a blank task id, a cycle) raises ValueError.
+
+Secrets never reach the db: text that `events.redact()` would change (an API key, `PASSWORD=...`) is stored
+redacted, so that one string does not come back unchanged. Everything else round-trips exactly.
 """
 from __future__ import annotations
 
 import json
 import math
+import re
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass, field
@@ -19,8 +23,12 @@ from datetime import UTC, datetime
 from typing import Any
 
 from tanishi.core_state.db import migrate, open_db
+from tanishi.core_state.events import redact
 
-# The store treats a status as opaque text. These are the words the Substrate itself uses.
+_LONE_SURROGATE = re.compile("[\ud800-\udfff]")
+
+# Beyond these words a status is opaque text, but it must be lowercase with no surrounding blanks, so "DONE"
+# or " done" cannot pass for done in the caller's eyes while next_step() re-runs the step.
 PENDING = "pending"
 RUNNING = "running"
 DONE = "done"
@@ -97,6 +105,27 @@ def _check_text(value: object, where: str, optional: bool = False) -> None:
         raise TypeError(f"{where} must be a str{' or None' if optional else ''}, got {type(value).__name__}")
 
 
+def _without_secrets(value: Any) -> Any:
+    """`value` with every secret-shaped string redacted, as events.redact() would. A string with no secret is
+    kept exactly, lone surrogates and all, so state without secrets still round-trips unchanged."""
+    if isinstance(value, str):
+        clean = _LONE_SURROGATE.sub("�", value)  # what redact() does to them anyway
+        return redact(clean) if redact(clean) != clean else value
+    if isinstance(value, list):
+        return [_without_secrets(item) for item in value]
+    if isinstance(value, dict):
+        out = {}
+        for k, item in value.items():
+            key = _without_secrets(k)
+            while key in out:  # two redacted keys must not overwrite each other
+                key = f"{key}#"
+            # A key such as "password" or "api_key": redact() hides any value under it; here, only text values.
+            named_secret = isinstance(item, str) and item and [*redact({k: 1}).values()] == ["[REDACTED]"]
+            out[key] = "[REDACTED]" if named_secret else _without_secrets(item)
+        return out
+    return value
+
+
 def _check_type(value: object, kind: type, where: str) -> None:
     if not isinstance(value, kind):
         raise TypeError(f"{where} must be a {kind.__name__}, got {type(value).__name__}")
@@ -112,8 +141,8 @@ def _validate(state: TaskState) -> None:
 def _validate_shape(state: TaskState) -> None:
     _check_type(state, TaskState, "state")
     _check_text(state.task_id, "task_id")
-    if not state.task_id:
-        raise ValueError("task_id must not be empty")
+    if not state.task_id.strip():
+        raise ValueError("task_id must not be blank")
     _check_type(state.working, dict, "working")
     _check_json(state.working, "working")
     _check_type(state.plan, Plan, "plan")
@@ -122,6 +151,10 @@ def _validate_shape(state: TaskState) -> None:
         _check_type(step, Step, f"plan.steps[{i}]")
         for name in _STEP_FIELDS:
             _check_text(getattr(step, name), f"plan.steps[{i}].{name}", optional=name in ("model", "result_ref"))
+        # Step ids are not checked for emptiness or uniqueness: the exam round-trips both
+        # (open-problems/SUB1-repair-conflicts.md). Steps are identified by position.
+        if not step.status or step.status != step.status.strip().lower():
+            raise ValueError(f"plan.steps[{i}].status {step.status!r} must be non-empty lowercase with no blanks")
     _check_type(state.goal_ids, list, "goal_ids")
     for i, goal_id in enumerate(state.goal_ids):
         _check_text(goal_id, f"goal_ids[{i}]")
@@ -141,12 +174,13 @@ def save(state: TaskState) -> None:
     Raises TypeError or ValueError, before the db is touched, if any part is not plain JSON of the declared shape.
     """
     _validate(state)
+    plan = {"steps": [{name: getattr(s, name) for name in _STEP_FIELDS} for s in state.plan.steps]}
     row = (
         state.task_id,
-        _dumps(state.working),
-        _dumps({"steps": [{name: getattr(s, name) for name in _STEP_FIELDS} for s in state.plan.steps]}),
-        _dumps(state.goal_ids),
-        _dumps(state.hypotheses),
+        _dumps(_without_secrets(state.working)),
+        _dumps(_without_secrets(plan)),
+        _dumps(_without_secrets(state.goal_ids)),
+        _dumps(_without_secrets(state.hypotheses)),
         datetime.now(UTC).isoformat(),
     )
     with closing(_connect()) as conn, conn:
@@ -158,7 +192,10 @@ def save(state: TaskState) -> None:
 
 
 def load(task_id: str) -> TaskState:
-    """The last saved state of `task_id`, as fresh objects. Raises LookupError if it was never saved."""
+    """The last saved state of `task_id`, as fresh objects.
+
+    Raises LookupError if it was never saved, ValueError if the stored row is not a state save() could write.
+    """
     with closing(_connect()) as conn:
         row = conn.execute(
             "SELECT working, plan, goal, hypotheses FROM substrate_state WHERE task_id = ?", (task_id,)
@@ -167,11 +204,16 @@ def load(task_id: str) -> TaskState:
         raise LookupError(f"no saved state for task {task_id!r}")
     if any(col is None for col in row):
         raise ValueError(f"saved state for task {task_id!r} is incomplete")
-    working, plan, goal_ids, hypotheses = (json.loads(col) for col in row)
-    return TaskState(
-        task_id=task_id,
-        working=working,
-        plan=Plan(steps=[Step(**{name: s[name] for name in _STEP_FIELDS}) for s in plan["steps"]]),
-        goal_ids=goal_ids,
-        hypotheses=hypotheses,
-    )
+    try:  # a row edited by raw SQL can be valid JSON of the wrong shape
+        working, plan, goal_ids, hypotheses = (json.loads(col) for col in row)
+        state = TaskState(
+            task_id=task_id,
+            working=working,
+            plan=Plan(steps=[Step(**{name: s[name] for name in _STEP_FIELDS}) for s in plan["steps"]]),
+            goal_ids=goal_ids,
+            hypotheses=hypotheses,
+        )
+        _validate(state)
+    except (KeyError, TypeError, AttributeError, ValueError) as e:
+        raise ValueError(f"saved state for task {task_id!r} is malformed: {type(e).__name__}") from None
+    return state

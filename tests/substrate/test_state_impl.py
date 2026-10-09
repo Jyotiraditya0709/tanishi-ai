@@ -143,3 +143,53 @@ def test_negative_zero_and_big_ints_round_trip_exactly():
     assert str(got["nz"]) == "-0.0"
     assert got["big"] == 10**30 and type(got["big"]) is int
     assert got["neg_big"] == -(10**30)
+
+
+def _raw(column):
+    with closing(open_db()) as conn:
+        return conn.execute(f"SELECT {column} FROM substrate_state WHERE task_id = 't'").fetchone()[0]
+
+
+def test_secrets_are_redacted_everywhere_but_plain_text_is_kept_exactly():
+    key = "ghp_" + "b" * 36
+    s = _state(
+        working={"password": "hunter2", "max_tokens": 5, "note": f"key {key} here", "plain": "a\ud800b"},
+        plan=Plan(steps=[Step(id="a", description=f"call with {key}", result_ref="events/1")]),
+        hypotheses=[{"h": "token=abc123"}],
+    )
+    save(s)
+    for column in ("working", "plan", "hypotheses"):
+        raw = _raw(column)
+        assert key not in raw and "hunter2" not in raw and "abc123" not in raw
+    got = load("t")
+    assert got.working["max_tokens"] == 5 and got.working["plain"] == "a\ud800b"
+    assert got.plan.steps[0].result_ref == "events/1"
+    assert s.working["password"] == "hunter2"  # save did not alter its argument
+
+
+@pytest.mark.parametrize("status", ["DONE", "Done", " done", "done\n", ""])
+def test_status_must_be_lowercase_without_blanks(status):
+    with pytest.raises(ValueError):
+        save(_state(plan=Plan(steps=[Step(id="a", description="x", status=status)])))
+
+
+@pytest.mark.parametrize("task_id", [" ", "\t\n"])
+def test_blank_task_id_is_refused(task_id):
+    with pytest.raises(ValueError):
+        save(_state(task_id=task_id))
+
+
+@pytest.mark.parametrize(("column", "value"), [
+    ("plan", '{"steps": "x"}'),
+    ("plan", '{"steps": [{"id": "a", "description": "d", "status": 1, "model": null, "result_ref": null}]}'),
+    ("plan", "[]"),
+    ("working", "[]"),
+    ("goal", "[1]"),
+    ("hypotheses", '["x"]'),
+])
+def test_wrong_shaped_row_loads_as_value_error(column, value):
+    save(_state())
+    with closing(open_db()) as conn, conn:
+        conn.execute(f"UPDATE substrate_state SET {column} = ? WHERE task_id = 't'", (value,))
+    with pytest.raises(ValueError):
+        load("t")
