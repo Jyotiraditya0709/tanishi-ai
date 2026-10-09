@@ -12,7 +12,8 @@ What each number is built from (decision 0014):
 - **RCR** = discoveries per researcher-month (``rcr``): 8 Human Effort hours are one researcher-day and a month is
   30 researcher-days, which is what makes the card's example (3 discoveries, 10 hours) give 72. The funnel is read
   from the OBS3 experiment ledger: experiments run, experiments with enough paired seeds to judge, and discoveries
-  (experiments whose gain ``is_real_gain`` calls real).
+  (experiments whose gain ``is_real_gain`` calls real). Under ``MIN_RCR_HOURS`` (0.1 h) of timed effort RCR is
+  ``None``: a few seconds of timer and one discovery would otherwise read as a breakthrough.
 - **CAR, AR, IA** have no definition in the repo yet, so they show ``None`` and say so (open-problems/OBS2.md).
 - **Human Effort** is the hours timed with ``tanishi time`` (``effort.py``) inside the window.
 """
@@ -33,6 +34,7 @@ from tanishi.observability.experiments import seed_scores
 
 HOURS_PER_RESEARCHER_DAY = effort.HOURS_PER_RESEARCHER_DAY
 RESEARCHER_DAYS_PER_MONTH = 30.0
+MIN_RCR_HOURS = 0.1  # below this RCR is a timer artefact, not a rate (decision 0018, item 8)
 MASTERED = "mastered"
 CEI_FACTORS = ("B", "T", "H", "N", "A", "P")
 _NOT_IN_REPO = "defined in the master plan, which is not in the repo yet; no node measures it (open-problems/OBS2.md)"
@@ -42,15 +44,34 @@ def _number(x: Any, name: str) -> float:
     """A finite real number >= 0, not a bool. Anything else is a ValueError (decision 0011, rule 12)."""
     if isinstance(x, bool) or not isinstance(x, numbers.Real):
         raise ValueError(f"{name} must be a number, got {x!r}")  # noqa: TRY004
-    if not math.isfinite(x) or x < 0:
+    if not _finite(x) or x < 0:
         raise ValueError(f"{name} must be a finite number >= 0, got {x!r}")
     return x
 
 
-def cei(b: float, t: float, h: float, n: float, a: float, p: float) -> float:
-    """CEI = B x T x H x N x A x P. Every factor is a finite number >= 0."""
+def _finite(x: float) -> bool:
+    try:
+        return math.isfinite(x)
+    except OverflowError:  # an int too large for a float
+        return False
+
+
+def _result(x: float, name: str) -> float:
+    """A computed number must be finite: inf is not strict JSON and not a measurement."""
+    if not _finite(x):
+        raise ValueError(f"{name} overflowed: its inputs are too large to give a finite number")
+    return x
+
+
+def cei(b: float, t: float, h: float, n: float, a: float, p: float) -> float | None:
+    """CEI = B x T x H x N x A x P. Every factor is a finite number >= 0.
+
+    A product too large to be finite is None (not measurable), not inf and not a ValueError: the red-team test
+    calls ``cei(1e200, 1e200, ...)`` without catching an error (open-problems/OBS2-repair-conflicts.md).
+    """
     factors = [_number(v, name) for v, name in zip((b, t, h, n, a, p), CEI_FACTORS, strict=True)]
-    return math.prod(factors)
+    product = math.prod(factors)
+    return product if _finite(product) else None
 
 
 def rcr(discoveries: float, hours: float) -> float:
@@ -59,15 +80,7 @@ def rcr(discoveries: float, hours: float) -> float:
     h = _number(hours, "hours")
     if h == 0:
         raise ValueError("RCR needs Human Effort hours > 0; with no hours timed there is nothing to divide by")
-    return d / (h / HOURS_PER_RESEARCHER_DAY) * RESEARCHER_DAYS_PER_MONTH
-
-
-def _window(window_days: Any) -> float:
-    if isinstance(window_days, bool) or not isinstance(window_days, numbers.Real):
-        raise ValueError(f"window_days must be a positive number, got {window_days!r}")  # noqa: TRY004
-    if not math.isfinite(window_days) or window_days <= 0:
-        raise ValueError(f"window_days must be a positive number, got {window_days!r}")
-    return float(window_days)
+    return _result(d / (h / HOURS_PER_RESEARCHER_DAY) * RESEARCHER_DAYS_PER_MONTH, "RCR")
 
 
 def _rows(conn: sqlite3.Connection | None, sql: str, args: tuple = ()) -> list[tuple]:
@@ -127,7 +140,9 @@ def _cei_entry(conn: sqlite3.Connection | None) -> dict[str, Any]:
         missing = ", ".join(k for k, f in inputs.items() if f["value"] is None)
         return {"value": None, "inputs": inputs, "unit": "index",
                 "explanation": f"CEI cannot be computed yet: {missing} are not measured by any node."}
-    return {"value": cei(*values), "inputs": inputs, "unit": "index", "explanation": "CEI = B x T x H x N x A x P."}
+    value = cei(*values)
+    why = "CEI = B x T x H x N x A x P." if value is not None else "CEI overflowed: the product is not finite."
+    return {"value": value, "inputs": inputs, "unit": "index", "explanation": why}
 
 
 def _rcr_entry(funnel: dict[str, int], hours: float, days: float) -> dict[str, Any]:
@@ -141,6 +156,10 @@ def _rcr_entry(funnel: dict[str, int], hours: float, days: float) -> dict[str, A
     if hours == 0:
         return {"value": None, "inputs": inputs, "unit": unit,
                 "explanation": f"RCR is unknown: {d} discoveries but no Human Effort hours timed to divide by."}
+    if hours < MIN_RCR_HOURS:
+        return {"value": None, "inputs": inputs, "unit": unit,
+                "explanation": (f"RCR is unknown: only {hours * 60:.1f} minutes of Human Effort timed; it needs at"
+                                f" least {MIN_RCR_HOURS:g} hours to be a rate, not a timer artefact.")}
     if d == 0:
         why = ("no experiments in the ledger in this window" if funnel["experiments"] == 0
                else f"none of {funnel['experiments']} experiments showed a gain larger than measured noise")
@@ -173,7 +192,7 @@ def _open_existing() -> sqlite3.Connection | None:
 
 def compute(window_days: float = 90) -> dict[str, dict[str, Any]]:
     """All six North Star numbers over the last ``window_days`` days, each with its inputs and an explanation."""
-    days = _window(window_days)
+    days = effort.check_window(window_days)
     now = datetime.now(UTC)
     since = now - timedelta(days=days)
     conn = _open_existing()

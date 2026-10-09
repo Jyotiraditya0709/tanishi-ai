@@ -25,6 +25,7 @@ START = "effort_start"
 STOP = "effort_stop"
 ACTOR = "human"
 HOURS_PER_RESEARCHER_DAY = 8.0
+MAX_WINDOW_DAYS = 36500  # 100 years; a larger window overflows timedelta and cannot be a real one
 
 
 @dataclass(frozen=True)
@@ -77,14 +78,19 @@ def sessions(conn: sqlite3.Connection | None = None) -> list[Session]:
     return out
 
 
-def _check_window(window_days: object) -> float | None:
-    if window_days is None:
-        return None
+def check_window(window_days: object) -> float:
+    """A window in days, in (0, MAX_WINDOW_DAYS]. Anything else is a ValueError, raised before the window is used."""
     if isinstance(window_days, bool) or not isinstance(window_days, numbers.Real):
         raise ValueError(f"window_days must be a positive number, got {window_days!r}")  # noqa: TRY004
+    if window_days > MAX_WINDOW_DAYS:  # compared first: math.isfinite overflows on a huge int
+        raise ValueError(f"window_days must be at most {MAX_WINDOW_DAYS} days, got {window_days!r}")
     if not math.isfinite(window_days) or window_days <= 0:
         raise ValueError(f"window_days must be a positive number, got {window_days!r}")
     return float(window_days)
+
+
+def _check_window(window_days: object) -> float | None:
+    return None if window_days is None else check_window(window_days)
 
 
 def hours(window_days: float | None = None, conn: sqlite3.Connection | None = None,

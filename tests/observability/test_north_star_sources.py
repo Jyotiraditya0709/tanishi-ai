@@ -136,3 +136,49 @@ def test_format_report_shows_every_number_and_its_reason(db):
 def test_time_cli_rejects_an_unknown_verb(capsys):
     assert effort.cli(["pause"]) == 2
     assert "usage" in capsys.readouterr().err
+
+
+def _timed(conn, minutes):
+    now = datetime.now(UTC)
+    for kind, at in ((effort.START, now - timedelta(minutes=minutes)), (effort.STOP, now)):
+        conn.execute("INSERT INTO events (ts, kind, actor) VALUES (?, ?, ?)", (at.isoformat(), kind, effort.ACTOR))
+    conn.commit()
+
+
+@pytest.mark.parametrize("minutes", [0.05, 3, 5.9])
+def test_rcr_below_the_hours_floor_is_unknown(db, minutes):
+    _seed_ledger(db)
+    _timed(db, minutes)
+    rcr = north_star.compute()["RCR"]
+    assert rcr["value"] is None
+    assert "timer artefact" in rcr["explanation"]
+    assert rcr["inputs"]["human_effort_hours"] > 0
+
+
+def test_rcr_at_the_hours_floor_is_a_rate(db):
+    _seed_ledger(db)
+    _timed(db, 6.01)
+    assert north_star.compute()["RCR"]["value"] == pytest.approx(north_star.rcr(1, 6.01 / 60), rel=1e-3)
+
+
+def test_window_cap_is_inclusive_and_checked_everywhere(db):
+    north_star.compute(effort.MAX_WINDOW_DAYS)
+    effort.hours(effort.MAX_WINDOW_DAYS)
+    for fn in (north_star.compute, effort.hours, effort.report):
+        with pytest.raises(ValueError, match="at most"):
+            fn(effort.MAX_WINDOW_DAYS + 1)
+
+
+def test_time_report_with_a_huge_window_is_a_clear_error(db, capsys):
+    assert effort.cli(["report", "1e9"]) == 1
+    assert "at most" in capsys.readouterr().err
+
+
+def test_rcr_overflow_is_a_value_error():
+    with pytest.raises(ValueError, match="overflowed"):
+        north_star.rcr(1e308, 1e-300)
+
+
+def test_cei_overflow_is_none_not_inf():
+    assert north_star.cei(1e200, 1e200, 1, 1, 1, 1) is None
+    assert north_star.cei(10**200, 10**200, 1, 1, 1, 1) is None
