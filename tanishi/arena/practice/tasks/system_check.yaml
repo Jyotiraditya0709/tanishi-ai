@@ -1,0 +1,7 @@
+id: practice.system_check
+family: tool_use
+tier: practice
+prompt: how much RAM do I have?
+verifier: tanishi.arena.practice.legacy.system_check
+timeout_s: 60
+tags: [practice, legacy, tool, "tool:get_system_info"]

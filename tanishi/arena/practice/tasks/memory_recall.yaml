@@ -1,0 +1,7 @@
+id: practice.memory_recall
+family: memory
+tier: practice
+prompt: remember my favorite color is blue. what is my favorite color?
+verifier: tanishi.arena.practice.legacy.memory_recall
+timeout_s: 30
+tags: [practice, legacy]

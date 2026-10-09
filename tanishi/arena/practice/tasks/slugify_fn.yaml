@@ -1,0 +1,9 @@
+id: practice.slugify_fn
+family: coding
+tier: practice
+prompt: >-
+  Write a Python function slugify(text) that lowercases the text, turns every run of characters that are not letters
+  or digits into a single '-', and strips '-' from both ends. Reply with only the code.
+verifier: tanishi.arena.practice.checks.slugify_fn
+timeout_s: 60
+tags: [practice, code]

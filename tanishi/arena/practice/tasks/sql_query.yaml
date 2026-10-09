@@ -1,0 +1,10 @@
+id: practice.sql_query
+family: coding
+tier: practice
+prompt: >-
+  SQLite table: orders(id INTEGER, customer TEXT, amount REAL, status TEXT). Write one SELECT that returns
+  (customer, total) for customers whose orders with status 'paid' add up to more than 100, largest total first.
+  Name the columns customer and total. Reply with only the SQL.
+verifier: tanishi.arena.practice.checks.sql_query
+timeout_s: 60
+tags: [practice, code]

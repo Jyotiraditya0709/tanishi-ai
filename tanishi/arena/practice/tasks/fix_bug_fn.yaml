@@ -1,0 +1,15 @@
+id: practice.fix_bug_fn
+family: coding
+tier: practice
+prompt: |-
+  This function should return the moving average of xs over windows of size k (one value per full window), but it is
+  wrong. Fix it and reply with only the corrected function.
+
+  def moving_avg(xs, k):
+      out = []
+      for i in range(len(xs) - k):
+          out.append(sum(xs[i:i + k]) / k)
+      return out
+verifier: tanishi.arena.practice.checks.fix_bug_fn
+timeout_s: 60
+tags: [practice, code]

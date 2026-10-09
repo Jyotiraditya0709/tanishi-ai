@@ -1,0 +1,7 @@
+id: practice.math
+family: reasoning
+tier: practice
+prompt: if I save $50/week, how much in 6 months?
+verifier: tanishi.arena.practice.legacy.math
+timeout_s: 30
+tags: [practice, legacy]

@@ -1,0 +1,11 @@
+id: practice.find_todo_file
+family: tool_use
+tier: practice
+prompt: Which file under src/ contains the marker FIXME-ORCHID? Give just the file name.
+setup: |
+  mkdir -p src
+  for n in a b c d; do printf 'def f():\n    return 1\n' > src/$n.py; done
+  printf '# FIXME-ORCHID: tidy this\n' >> src/c.py
+verifier: tanishi.arena.practice.checks.find_todo_file
+timeout_s: 60
+tags: [practice, tool, "tool:search_files"]

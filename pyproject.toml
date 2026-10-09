@@ -51,3 +51,4 @@ pythonpath = ["."]
 
 [tool.setuptools.package-data]
 "tanishi.core_state" = ["migrations/*.sql"]
+"tanishi.arena.practice" = ["tasks/*.yaml"]

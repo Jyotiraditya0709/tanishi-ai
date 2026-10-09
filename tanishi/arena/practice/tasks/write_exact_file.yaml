@@ -1,0 +1,7 @@
+id: practice.write_exact_file
+family: tool_use
+tier: practice
+prompt: "Create the file out/status.txt containing exactly: ready-42"
+verifier: tanishi.arena.practice.checks.write_exact_file
+timeout_s: 60
+tags: [practice, tool, "tool:write_file"]

@@ -1,0 +1,11 @@
+id: practice.read_two_sum
+family: tool_use
+tier: practice
+prompt: Add the numbers stored in data/left.txt and data/right.txt and tell me the total.
+setup: |
+  mkdir -p data
+  printf '173\n' > data/left.txt
+  printf '269\n' > data/right.txt
+verifier: tanishi.arena.practice.checks.read_two_sum
+timeout_s: 60
+tags: [practice, tool, "tool:read_file"]

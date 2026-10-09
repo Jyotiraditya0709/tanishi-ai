@@ -1,0 +1,7 @@
+id: practice.poem
+family: conversation
+tier: practice
+prompt: write me a quick poem about coffee
+verifier: tanishi.arena.practice.legacy.poem
+timeout_s: 30
+tags: [practice, legacy, judge:llm]

@@ -1,0 +1,7 @@
+id: practice.get_time
+family: tool_use
+tier: practice
+prompt: what time is it right now?
+verifier: tanishi.arena.practice.legacy.get_time
+timeout_s: 60
+tags: [practice, legacy, tool, "tool:get_datetime"]

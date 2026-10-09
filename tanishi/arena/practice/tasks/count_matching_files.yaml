@@ -1,0 +1,11 @@
+id: practice.count_matching_files
+family: tool_use
+tier: practice
+prompt: How many .log files are in the logs/ folder? Reply with just the number.
+setup: |
+  mkdir -p logs
+  for i in 1 2 3 4 5 6 7; do : > logs/run$i.log; done
+  for i in 1 2 3; do : > logs/note$i.txt; done
+verifier: tanishi.arena.practice.checks.count_matching_files
+timeout_s: 60
+tags: [practice, tool, "tool:list_directory"]
