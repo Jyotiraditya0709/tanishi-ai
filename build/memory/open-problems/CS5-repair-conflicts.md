@@ -35,3 +35,5 @@ The test wins (round rule). What I built instead:
 
 If the human wants the ValueError, the red-team test's assertion for those three cases has to change first
 (e.g. `pytest.raises(ValueError)` for nan/inf/1e12, a list for -1). The code change is then two lines.
+
+**R7 resolved (2026-10-09):** the three CS4 tests now assert the latest migration via the `latest_version` helper.

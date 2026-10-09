@@ -82,12 +82,12 @@ def _at_version_1(tmp_path, monkeypatch):
     return c
 
 
-def test_migration_fills_ancestors_for_existing_goals(tmp_path, monkeypatch):
+def test_migration_fills_ancestors_for_existing_goals(tmp_path, monkeypatch, latest_version):
     c = _at_version_1(tmp_path, monkeypatch)
     c.execute("INSERT INTO goals (id, parent_id, owner, status) VALUES ('p', NULL, 'user', 'active')")
     c.execute("INSERT INTO goals (id, parent_id, owner, status) VALUES ('k', 'p', 'user', 'active')")
     c.commit()
-    assert migrate(c) == 2
+    assert migrate(c) == latest_version
     assert set(c.execute("SELECT goal_id, ancestor_id FROM goal_ancestors")) == {("p", "p"), ("k", "k"), ("k", "p")}
     with pytest.raises(sqlite3.Error):
         c.execute("UPDATE goals SET parent_id = 'k' WHERE id = 'p'")
@@ -95,7 +95,7 @@ def test_migration_fills_ancestors_for_existing_goals(tmp_path, monkeypatch):
     c.close()
 
 
-def test_migration_replaces_objects_the_old_goals_module_installed(tmp_path, monkeypatch):
+def test_migration_replaces_objects_the_old_goals_module_installed(tmp_path, monkeypatch, latest_version):
     """Before 0002, goals.py created goal_ancestors itself. A stale copy must not survive the migration."""
     c = _at_version_1(tmp_path, monkeypatch)
     c.execute("INSERT INTO goals (id, parent_id, owner, status) VALUES ('p', NULL, 'user', 'active')")
@@ -103,15 +103,15 @@ def test_migration_replaces_objects_the_old_goals_module_installed(tmp_path, mon
     c.execute("INSERT INTO goal_ancestors VALUES ('ghost', 'ghost')")
     c.execute("CREATE TRIGGER goals_tree_delete AFTER DELETE ON goals BEGIN SELECT 1; END")
     c.commit()
-    assert migrate(c) == 2
+    assert migrate(c) == latest_version
     assert list(c.execute("SELECT goal_id, ancestor_id FROM goal_ancestors")) == [("p", "p")]
     c.close()
 
 
-def test_goals_module_needs_only_migrate():
+def test_goals_module_needs_only_migrate(latest_version):
     add_goal("a", "user")
     c = open_db()
-    assert c.execute("SELECT MAX(version) FROM schema_version").fetchone()[0] == 2
+    assert c.execute("SELECT MAX(version) FROM schema_version").fetchone()[0] == latest_version
     c.close()
 
 
