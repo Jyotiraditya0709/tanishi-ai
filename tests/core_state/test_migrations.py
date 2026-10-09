@@ -42,14 +42,14 @@ SPEC_PK = {
 }  # every other table: ["id"]
 
 # column kinds for generated rows (after the key column):
-# t=text, r=real, i=int, j=json object, n=NULL (reference columns: targets are not in the spec)
+# t=text, r=real, c=confidence in [0, 1], i=int, j=json object, n=NULL (reference columns: targets are not in the spec)
 KINDS = {
     "events": "ttttjtt",
-    "beliefs": "tttrtttt",
+    "beliefs": "tttctttt",
     "evidence": "nntt",
     "goals": "nttrtt",
-    "predictions": "ttjrjtr",
-    "rules": "ttir",
+    "predictions": "ttjcjtr",
+    "rules": "ttic",
     "capabilities": "tttrrt",
     "experiments": "ttttirrj",
     "portfolio": "ttrrt",
@@ -236,7 +236,7 @@ def test_events_id_autoassigns_increasing(conn):
     for i in range(3):
         conn.execute(
             "INSERT INTO events(ts, kind, actor, session_id, payload, prev_hash, hash) "
-            "VALUES ('t','k','a','s','{}','p',?)", (f"h{i}",))
+            "VALUES ('t','k','a','s','{}',?,?)", (f"p{i}", f"h{i}"))
     conn.commit()
     ids = [r[0] for r in conn.execute("SELECT id FROM events ORDER BY id")]
     assert ids == [1, 2, 3]
@@ -426,6 +426,8 @@ def _value(rng, kind, n):
         return None
     if kind == "r":
         return rng.random() * rng.choice([1, 100, 1e6])
+    if kind == "c":
+        return rng.random()
     if kind == "i":
         return rng.randint(-1000, 10**9)
     return json.dumps({"k": rng.randint(0, 99), "l": [rng.random(), "s", None],
@@ -463,6 +465,21 @@ def test_property_rows_round_trip(conn, table, seed):
         for kind, val, back in zip(kinds, row, got[k]):
             if kind == "j":
                 assert json.loads(back) == json.loads(val)
+
+
+@pytest.mark.parametrize("table, cols, row", [
+    ("beliefs", "id, subject, predicate, object, confidence, source, created_at, updated_at, status",
+     ["b", "s", "p", "o", None, "src", "t", "t", "active"]),
+    ("predictions", "id, ts, about, expected, confidence, actual, resolved_at, score",
+     ["p", "t", "a", "{}", None, "{}", "t", 0.5]),
+    ("rules", "id, domain, statement, support, confidence", ["r", "d", "st", 1, None]),
+])
+@pytest.mark.parametrize("bad", [1.5, -0.1, float("nan")])
+def test_confidence_outside_unit_interval_is_refused(conn, table, cols, row, bad):
+    migrate(conn)
+    row = [bad if v is None else v for v in row]
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(f"INSERT INTO {table}({cols}) VALUES ({','.join('?' * len(row))})", row)
 
 
 def test_data_survives_close_and_reopen(tmp_path):

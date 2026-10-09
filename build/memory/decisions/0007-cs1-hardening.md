@@ -31,3 +31,4 @@ Date: 2026-10-09. Decided by: the human, for the CS1 repair round. Conflicts wer
    autouse fixture that gives every test a temporary `HOME` and `TANISHI_CORE_STATE_DB`, and *unsets* `TANISHI_HOME`, so the
    default still follows `HOME` (the exam needs this). Under that fixture no test can reach the real `~/.tanishi`.
    `open_db()` does not refuse the default path under pytest, so R8 stays open (the human chose the exam over R8).
+9. **R8 was rewritten** (human chose the fixture approach): the test now checks that `open_db()` with no path and no `TANISHI_CORE_STATE_DB` creates its file in the temporary HOME and never under the real home, because the fixture, not a guard in `open_db()`, is what protects `~/.tanishi`.

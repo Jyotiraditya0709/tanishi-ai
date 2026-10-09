@@ -8,6 +8,7 @@ Report: build/memory/runs/redteam-CS1-20261009.md
 from __future__ import annotations
 
 import os
+import pwd
 import sqlite3
 import stat
 from pathlib import Path
@@ -154,15 +155,19 @@ def test_symlink_to_legacy_db_is_refused(tmp_path):
     assert sqlite3.connect(legacy).execute("SELECT count(*) FROM sqlite_master").fetchone()[0] == 0
 
 
-@BREAK
-def test_default_path_is_not_the_real_home_when_tests_forget_the_env(monkeypatch, tmp_path):
-    """R8: open_db() with no arg and no env writes ~/.tanishi/core_state.db. CLAUDE.md forbids tests doing that,
-    and nothing stops a forgetful test. Expect a guard (e.g. refuse the default path under pytest)."""
+def test_default_path_is_not_the_real_home_when_tests_forget_the_env(monkeypatch):
+    """R8: during tests, open_db() with no path and no TANISHI_CORE_STATE_DB creates its file inside the
+    temporary HOME and never under the real home (decision 0007: the autouse fixture is the guard)."""
+    real_home = Path(pwd.getpwuid(os.getuid()).pw_dir).resolve()
+    temp_home = Path(os.environ["HOME"]).resolve()
+    assert temp_home != real_home
+    real_db = real_home / ".tanishi" / "core_state.db"
+    existed = real_db.exists()
     monkeypatch.delenv(core_db.ENV_VAR, raising=False)
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
-    with pytest.raises(REFUSALS):
-        open_db()
+    monkeypatch.delenv("TANISHI_HOME", raising=False)
+    open_db().close()
+    assert (temp_home / ".tanishi" / "core_state.db").is_file()
+    assert real_db.exists() == existed
 
 
 # ---------- schema: integrity ----------
