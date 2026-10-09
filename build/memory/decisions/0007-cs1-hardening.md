@@ -32,3 +32,4 @@ Date: 2026-10-09. Decided by: the human, for the CS1 repair round. Conflicts wer
    default still follows `HOME` (the exam needs this). Under that fixture no test can reach the real `~/.tanishi`.
    `open_db()` does not refuse the default path under pytest, so R8 stays open (the human chose the exam over R8).
 9. **R8 was rewritten** (human chose the fixture approach): the test now checks that `open_db()` with no path and no `TANISHI_CORE_STATE_DB` creates its file in the temporary HOME and never under the real home, because the fixture, not a guard in `open_db()`, is what protects `~/.tanishi`.
+10. **Tests follow the latest migration.** CS1 tests expect the highest `NNNN` in `tanishi/core_state/migrations/` (the `latest_version` fixture in `tests/core_state/conftest.py`), not a hard-coded 1, so CS4 can add 0002 without breaking them; the round-trip sample data writes only `user` or `tanishi` into `goals.owner`, which CS4 will enforce.
