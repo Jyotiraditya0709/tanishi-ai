@@ -16,3 +16,6 @@ Settled without a ruling, because the test wins over a decision and nothing fail
 - Decision 2 wanted DELETE on `events` to always abort. R11 deletes an unhashed event, so the trigger only guards hashed rows.
 - Decision 8 wanted the autouse fixture to set `TANISHI_HOME`. That would move the default path away from `$HOME/.tanishi`
   and fail the exam, so the fixture unsets `TANISHI_HOME` and sets a temporary `HOME`.
+
+## Status
+Resolved on 2026-10-09 in f0399d3: the exam data follows decision 0007.

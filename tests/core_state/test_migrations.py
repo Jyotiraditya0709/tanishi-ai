@@ -13,6 +13,7 @@ import random
 import sqlite3
 
 import pytest
+
 from tanishi.core_state import migrate, open_db
 
 SPEC_COLUMNS = {
