@@ -125,7 +125,7 @@ def test_owner_cannot_change(raw):
 
 
 def test_replace_cannot_change_owner(raw):
-    """REPLACE deletes and re-inserts, so no UPDATE trigger fires. The leftover ancestor row still stops it."""
+    """REPLACE deletes and re-inserts, so no UPDATE trigger fires. goals_check_insert stops it."""
     g = add_goal("hers", "tanishi")
     with pytest.raises(sqlite3.IntegrityError):
         raw.execute(
@@ -147,6 +147,29 @@ def test_replace_with_a_bad_owner_is_refused(raw, owner):
             )
         raw.rollback()
     assert [(x.id, x.owner) for x in active_goals()] == [(g.id, "user")]
+
+
+def _ancestors(raw, gid):
+    return {r[0] for r in raw.execute("SELECT ancestor_id FROM goal_ancestors WHERE goal_id = ?", (gid,))}
+
+
+@pytest.mark.parametrize("new_parent", ["same", "other", "root"])
+def test_replace_of_a_leaf_keeps_ancestors_exact(raw, new_parent):
+    """REPLACE deletes the old row without firing goals_tree_delete, so its old ancestor rows must go another way."""
+    a = add_goal("a", "user")
+    b = add_goal("b", "user", parent_id=a.id)
+    other = add_goal("other", "user")
+    leaf = add_goal("leaf", "user", parent_id=b.id)
+    parent = {"same": b.id, "other": other.id, "root": None}[new_parent]
+    raw.execute(
+        "INSERT OR REPLACE INTO goals (id, parent_id, owner, title, rank, status) VALUES (?, ?, 'user', 'x', 1, 'active')",
+        (leaf.id, parent),
+    )
+    raw.commit()
+    expected = {"same": {leaf.id, b.id, a.id}, "other": {leaf.id, other.id}, "root": {leaf.id}}[new_parent]
+    assert _ancestors(raw, leaf.id) == expected
+    assert _ancestors(raw, b.id) == {b.id, a.id}
+    assert raw.execute("SELECT COUNT(*) FROM goal_ancestors").fetchone()[0] == 4 + len(expected)  # a, b, b>a, other
 
 
 def _chain(n):

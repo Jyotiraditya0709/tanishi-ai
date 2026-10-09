@@ -49,6 +49,10 @@ BEGIN
     -- INSERT OR REPLACE deletes the old row without an UPDATE, so goals_owner_fixed never sees it.
     SELECT RAISE(ABORT, 'goal owner cannot change')
         WHERE EXISTS (SELECT 1 FROM goals WHERE id = NEW.id AND owner IS NOT NEW.owner);
+    -- Every check passed. If this is a REPLACE of an existing leaf, its old row goes without firing
+    -- goals_tree_delete (recursive triggers are off), so drop its old ancestor rows here.
+    -- goals_tree_insert writes the new ones. A plain INSERT of a new id finds nothing to drop.
+    DELETE FROM goal_ancestors WHERE goal_id = NEW.id;
 END;
 
 CREATE TRIGGER goals_tree_insert AFTER INSERT ON goals
