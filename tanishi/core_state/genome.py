@@ -33,8 +33,8 @@ def record_version(
         raise ValueError("genome version must be a non-empty string")
     if parent is not None and (not isinstance(parent, str) or not parent.strip()):
         raise ValueError("genome parent must be None or a non-empty string")
-    if isinstance(genes_changed, str):
-        raise TypeError("genes_changed must be a list of gene names, not a string")
+    if isinstance(genes_changed, str) or not all(isinstance(g, str) for g in genes_changed):
+        raise TypeError("genes_changed must be a list of gene names (strings)")
     record: dict[str, Any] = {
         "version": version,
         "parent": parent,
