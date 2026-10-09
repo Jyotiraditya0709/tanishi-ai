@@ -2,7 +2,9 @@
 
 The implementer did not edit the exam. The human or the tester decides.
 
-## C1 · `test_unresolvable_verifier_scores_zero` cannot run (exam bug, not a spec conflict)
+## C1 · `test_unresolvable_verifier_scores_zero` cannot run (exam bug, not a spec conflict) · RESOLVED
+
+Fixed by the tester in 48e0027 (`dataclasses.replace`). The repair round's conflicts are in `AR1-repair-conflicts.md`.
 
 `tests/arena/test_runner.py:125` calls `make_task("full", verifier="no_such_module_anywhere.check")`. `make_task`'s first
 positional parameter is `verifier`, so Python raises `TypeError: got multiple values for argument 'verifier'` inside the
