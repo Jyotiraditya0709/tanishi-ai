@@ -35,7 +35,6 @@ def test_g2_tanishi_cannot_promote_itself_by_flipping_owner(raw):  # BREAK
     pytest.fail("owner of an existing goal can be changed from tanishi to user")
 
 
-@pytest.mark.xfail(strict=True, reason="owner check lands in the next builder run")
 @pytest.mark.parametrize("owner", ["USER", " user", "admin", ""])
 def test_g3_raw_insert_with_a_bad_owner_is_refused(raw, owner):
     """Only 'user' and 'tanishi' are owners, so no goal can ever sort above a real user goal."""

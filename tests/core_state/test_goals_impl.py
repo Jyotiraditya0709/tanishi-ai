@@ -136,6 +136,19 @@ def test_replace_cannot_change_owner(raw):
     assert [x.owner for x in active_goals()] == ["tanishi"]
 
 
+@pytest.mark.parametrize("owner", ["USER", "Tanishi", "user ", "admin", "", None])
+def test_replace_with_a_bad_owner_is_refused(raw, owner):
+    g = add_goal("mine", "user")
+    for gid in (g.id, "fresh"):  # an existing id and a new one
+        with pytest.raises(sqlite3.IntegrityError):
+            raw.execute(
+                "INSERT OR REPLACE INTO goals (id, owner, title, rank, status) VALUES (?, ?, 'x', 1, 'active')",
+                (gid, owner),
+            )
+        raw.rollback()
+    assert [(x.id, x.owner) for x in active_goals()] == [(g.id, "user")]
+
+
 def _chain(n):
     ids, parent = [], None
     for i in range(n):

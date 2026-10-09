@@ -34,7 +34,9 @@ SELECT goal_id, ancestor_id FROM up;
 
 CREATE TRIGGER goals_check_insert BEFORE INSERT ON goals
 BEGIN
-    -- No owner check on insert: red-team G3 inserts owner 'USER' by raw SQL (open-problems/CS4-repair-conflicts.md).
+    -- Exact match only, so 'USER' or ' user' cannot sort among the user's goals (red-team G3).
+    SELECT RAISE(ABORT, 'goal owner must be user or tanishi')
+        WHERE NEW.owner IS NULL OR NEW.owner NOT IN ('user', 'tanishi');
     SELECT RAISE(ABORT, 'goal cannot be its own parent')
         WHERE NEW.parent_id = NEW.id;
     SELECT RAISE(ABORT, 'goal parent does not exist')
