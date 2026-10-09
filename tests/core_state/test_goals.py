@@ -12,9 +12,9 @@ import random
 import sqlite3
 
 import pytest
-from tanishi.core_state.goals import active_goals, add_goal
 
 from tanishi.core_state import migrate, open_db
+from tanishi.core_state.goals import active_goals, add_goal
 
 
 @pytest.fixture
