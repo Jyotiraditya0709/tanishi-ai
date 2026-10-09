@@ -1,7 +1,8 @@
 """The Arena task format: one YAML file per task.
 
 Fields: id, family, tier, prompt, setup (optional), verifier (dotted path to a Python function), timeout_s, tags.
-Files are read with yaml.safe_load, so a task file can never construct Python objects.
+Files are read with a safe loader that also refuses duplicate keys, so a task file can never construct Python
+objects or silently keep only the last of two values.
 """
 from __future__ import annotations
 
@@ -12,6 +13,7 @@ from pathlib import Path
 import yaml
 
 _REQUIRED_STR = ("id", "family", "tier", "prompt", "verifier")
+MAX_TIMEOUT_S = 3600  # longer timeouts are capped to this, so no attempt can wait forever or overflow a timer
 
 
 @dataclass(frozen=True)
@@ -39,6 +41,8 @@ class Task:
             raise TypeError(f"timeout_s must be a number, got {type(t).__name__}")
         if not math.isfinite(t) or t <= 0:
             raise ValueError(f"timeout_s must be a positive finite number, got {t!r}")
+        if t > MAX_TIMEOUT_S:
+            object.__setattr__(self, "timeout_s", MAX_TIMEOUT_S)
         if isinstance(self.tags, (str, bytes)) or not isinstance(self.tags, (list, tuple)):
             raise TypeError(f"tags must be a list of strings, got {type(self.tags).__name__}")
         if not all(isinstance(tag, str) for tag in self.tags):
@@ -47,15 +51,48 @@ class Task:
         if self.setup is not None and not isinstance(self.setup, str):
             raise TypeError(f"setup must be a string, got {type(self.setup).__name__}")
 
+    def brief(self) -> TaskBrief:
+        """The part of the task a candidate may see: no verifier path, no setup script."""
+        return TaskBrief(self.id, self.family, self.tier, self.prompt, self.timeout_s, self.tags)
+
+
+@dataclass(frozen=True)
+class TaskBrief:
+    """What the executor receives. The verifier, and so the expected answer, never reaches the candidate's process."""
+
+    id: str
+    family: str
+    tier: str
+    prompt: str
+    timeout_s: float
+    tags: tuple[str, ...] = ()
+
 
 _FIELDS = frozenset(f.name for f in fields(Task))
+
+
+class _StrictLoader(yaml.SafeLoader):
+    """yaml.SafeLoader that refuses a mapping with the same key twice."""
+
+
+def _mapping_without_duplicates(loader: _StrictLoader, node: yaml.MappingNode) -> dict:
+    seen = set()
+    for key_node, _ in node.value:
+        key = loader.construct_object(key_node, deep=True)
+        if key in seen:
+            raise yaml.constructor.ConstructorError(None, None, f"duplicate key {key!r}", key_node.start_mark)
+        seen.add(key)
+    return loader.construct_mapping(node, deep=True)
+
+
+_StrictLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _mapping_without_duplicates)
 
 
 def load_task(path: str | Path) -> Task:
     """Read one task file. Raises FileNotFoundError, or ValueError/TypeError for an invalid file."""
     text = Path(path).read_text(encoding="utf-8")
     try:
-        data = yaml.safe_load(text)
+        data = yaml.load(text, Loader=_StrictLoader)  # a SafeLoader subclass: never builds Python objects
     except yaml.YAMLError as e:
         raise ValueError(f"{path}: not valid YAML: {e}") from e
     if not isinstance(data, dict):

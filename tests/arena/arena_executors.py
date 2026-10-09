@@ -53,6 +53,12 @@ def hang(task, candidate, seed):
     return "late"
 
 
+def report_brief(task, candidate, seed):
+    """Reports what the executor was handed, and the environment it runs in, as JSON."""
+    return json.dumps({"type": type(task).__name__, "fields": sorted(vars(task)), "env": sorted(os.environ),
+                       "passed": os.environ.get("ARENA_TEST_PASSED")})
+
+
 # --- verifiers ---------------------------------------------------------------------------------------------------
 
 
@@ -64,22 +70,30 @@ def is_four(task, output):
     return (1.0, "four") if output == "4" else (0.0, f"got {output!r}")
 
 
-def output_is_none(task, output):
-    return (1.0, "no executor") if output is None else (0.0, "had output")
+def output_is_reason(task, output):
+    """Full marks, with the executor's output as the reason, so a test can read what the executor saw."""
+    return 1.0, output
+
+
+def raise_exit(task, output):
+    raise SystemExit(f"verifier exits with {task.prompt}")
 
 
 def report_env(task, output):
-    """Score 1 only if the attempt is fully isolated; the reason carries what it saw, as JSON."""
+    """Full marks; the reason carries what the verifier saw, as JSON (short, since reasons are capped)."""
     home = os.environ["HOME"]
+    tanishi_home = str(Path(home, ".tanishi"))
+    db = os.environ.get("TANISHI_CORE_STATE_DB")
     seen = {
         "home": home,
-        "tanishi_home": os.environ.get("TANISHI_HOME"),
-        "db": os.environ.get("TANISHI_CORE_STATE_DB"),
-        "cwd": os.getcwd(),
+        "tanishi_home_in_home": os.environ.get("TANISHI_HOME") == tanishi_home,
+        "db_in_tanishi_home": db == str(Path(tanishi_home, "core_state.db")) and Path(db).is_file(),
+        "cwd_is_home": Path(os.getcwd()).resolve() == Path(home).resolve(),
         "legacy": [v for v in ("TANISHI_DB_PATH", "DB_PATH", "SKILLS_PATH") if v in os.environ],
-        "db_exists": Path(os.environ["TANISHI_CORE_STATE_DB"]).is_file(),
         "setup_marker": Path(home, "prepared.txt").is_file(),
         "has_empty_path": "" in sys.path,
+        "tmpdir_in_home": os.environ.get("TMPDIR") == str(Path(home, "tmp")) and Path(home, "tmp").is_dir(),
+        "env": sorted(set(os.environ) - {"PATH", "LANG", "HOME", "TANISHI_HOME", "TANISHI_CORE_STATE_DB", "TMPDIR"}),
     }
     return 1.0, json.dumps(seen)
 
