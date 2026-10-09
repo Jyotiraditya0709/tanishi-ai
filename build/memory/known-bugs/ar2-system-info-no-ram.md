@@ -10,10 +10,12 @@ Referenced from `tanishi/arena/practice/legacy.py` (`system_check`) and `checks.
 - [ ] **No retry in `ToolRegistry`.** The legacy `flaky_probe` assumed the registry retries; it does not. The first call
       fails and the agent must call again. The verifier only needs one successful real call, so it still works.
 - [ ] **`aimed=` is a substring check on the tool input JSON.** `list_directory {"path": "nologs"}` counts as aimed at
-      `logs`. Only matters with a lucky guess on top, since the answer is still checked.
-- [ ] **Tool "success" is the registry's, not the tool's.** `read_file` on a missing path can return an error string
-      with `success: true`. Tasks with `seen=` values catch that; `count_matching_files` and the write tasks rely on
-      the answer or the file on disk instead.
+      `logs`. Matters less since the AR2 repair: the file tasks also need the random planted value to come out of a
+      tool's output (`evidence=`), which a call at the wrong path cannot give.
+- [x] **Tool "success" is the registry's, not the tool's.** `read_file` on a missing path can return an error string
+      with `success: true`. Since the AR2 repair every file task needs the planted value in the output (or, for
+      `count_matching_files`, every planted file name or the count from a shell call), so an error string earns nothing.
+      The write tasks rely on the file on disk.
 - [ ] **Forged events.** Code in the attempt can call `emit()` itself and write a matching tool_call/tool_result pair
       (see `tooltrace.py`). Closed only when the Warden (W1) owns the log.
 - [ ] **`tanishi.autoresearch.benchmark` loads the repo `.env` on import.** An executor that imports it to register

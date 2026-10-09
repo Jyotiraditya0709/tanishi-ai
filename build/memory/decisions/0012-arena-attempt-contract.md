@@ -50,3 +50,14 @@ nodes (AR2+, AR3, AR4, OBS3, M1) build on it.
   path; AR3/AR4 must keep verifier code out of the candidate's reach for Frontier and Sealed tasks.
 - The executor process runs `setup` and the candidate together, so a candidate can fake a `setup_failed` message and be
   logged as `infra`. It still scores 0.
+
+## Addendum · AR2 repair round (2026-10-09)
+
+Two additions, both from the human's AR2 repair card (RT-AR2-4 and RT-AR2-8). Nothing above changes.
+
+- **Rows carry tags.** `meta` also holds `tags` (the task's tag list), so anything reading `experiments` (CEI, OBS3) can
+  leave out `judge:llm` rows without loading the task set.
+- **A verifier can blame the candidate.** `tanishi.arena.verifiers.candidate_fault(reason)` returns a `CandidateFault`,
+  a `Verdict` subclass (still a plain `(0.0, reason)` pair for any caller). The runner records it as score 0 with
+  `failure_kind = "candidate"`. Used when the candidate's query or code runs past a limit the verifier sets, so a
+  runaway answer is not logged as a verifier failure.
