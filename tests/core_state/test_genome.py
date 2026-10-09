@@ -16,9 +16,9 @@ import random
 import sqlite3
 
 import pytest
-from tanishi.core_state.genome import record_version
 
 from tanishi.core_state import migrate, open_db
+from tanishi.core_state.genome import record_version
 
 # The spec does not name the error; any of these means "rejected".
 REJECTED = (sqlite3.Error, ValueError, TypeError, KeyError)
