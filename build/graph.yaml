@@ -1,0 +1,675 @@
+# Tanishi Build Graph, v1
+#
+# The single list of everything the AI engineering swarm builds, in dependency order.
+# Agents never get "build Tanishi". They get one node from this file.
+# A node is ready when every node in its depends_on is done (see build/status.json).
+#
+# This file is direction, so it is a protected path: agents read it, only you merge changes to it.
+# Run `python build/orchestrator.py validate` after every edit.
+
+version: 1
+project: tanishi
+architecture: "v1.0, frozen 2026-10-09 (see build/memory/architecture/frozen-v1.md)"
+objective_90d: >-
+  One complete recursive loop working end to end: task, attempt, failure, failure analysis,
+  hypothesis, new skill, implementation, test, Arena, improvement, memory, next task.
+  Node M1 is that loop closing once. Every other node exists to get there or to plug into it.
+
+tiers:
+  T0: Foundation. Core State, Arena, Cognitive Substrate, Observability, plus the builder and the guard rails.
+  T1: Learning. Experience compiler, knowledge, skills, training examples, self-edit, curriculum.
+  T2: Self-improvement. Evolution, causal attribution, capability graph, unknown discovery, verifier discovery, leverage.
+  T3: Research. Hypotheses, experiments, simulation, self-play, research strategy.
+  T4: Meta. Self-extensible compiler, joint intelligence search, the forges.
+
+# Paths no agent branch may touch. CI fails any agent/* PR that changes them,
+# and CODEOWNERS makes every other PR that touches them wait for you.
+protected_paths:
+  - constitution/
+  - warden/
+  - vault/
+  - reality/
+  - builder_vault/
+  - tanishi/guard/
+  - .github/
+  - CLAUDE.md
+  - build/graph.yaml
+  - build/agents/
+  - scripts/check_protected_paths.py
+
+definition_of_done:
+  - The spec's acceptance list is met, checked by tests that a different agent wrote from this spec.
+  - Delivered as code plus tests plus a benchmark or evaluation where the node produces intelligence.
+  - Unit, integration and property tests pass in CI, plus the regression suite and the node's Arena slice.
+  - No protected path touched. No secret, personal data or db file committed.
+  - The red-team agent attacked it and every break it found is fixed or written up in known-bugs.
+  - The after-task questions are answered in build/memory/ (what we learned, what failed and why,
+    which assumption was wrong, what the next agent should know).
+
+# owner: swarm = agents build it, you merge it.
+#        human = you do it (or an agent drafts it and you read every line).
+# size:  S = under 2 agent-hours, M = half a day, L = a full day or more.
+# compete: true = send to 2-3 agents from different models; the Builder Arena keeps the best.
+
+nodes:
+
+  # ---------------------------------------------------------------- T0 · builder and guard rails
+
+  - id: B0
+    title: Clean ground
+    tier: T0
+    pillar: builder
+    branch: human/clean-ground
+    owner: human
+    protected: true
+    size: S
+    depends_on: []
+    goal: >-
+      Make the repo safe to open to a swarm and to the public before any agent touches it.
+    steps:
+      - Remove data/db.sqlite from all git history with git filter-repo, then force-push once. It holds 267 conversations, 74 memories and a password hash.
+      - Change the password whose hash is in the passwords table, and rotate any API key that was ever in a committed file.
+      - Restore tanishi/config/prompts.py from HEAD (git show HEAD:tanishi/config/prompts.py); the working copy was clobbered to a one-line stub.
+      - Commit the 36 pending files in small commits by area, and decide on the untracked ones (tanishi/config/models.py, tanishi/autoresearch/benchmark_runner.py, ARCHITECTURE.md).
+      - Untrack runtime files (tanishi/tools/search_cache.json, proactive_state.json, autoresearch_results/snapshots/, runner.stdout, runner.stderr) and add them to .gitignore.
+      - Recreate the venv so tanishi.cli imports (the pyexpat/libexpat error), and add requests to pyproject dependencies.
+    acceptance:
+      - git log --all -- data/db.sqlite returns nothing.
+      - "`python -c 'import tanishi.cli, tanishi.proactive.run_proactive'` succeeds."
+      - git status is clean on main.
+
+  - id: B1
+    title: Protect main and add the CI gates
+    tier: T0
+    pillar: builder
+    branch: human/ci
+    owner: human
+    protected: true
+    size: S
+    depends_on: [B0]
+    goal: >-
+      Every change reaches main only through a PR that passed the gates. Agents work on agent/* branches only.
+    steps:
+      - Copy .github/workflows/ci.yml, .github/CODEOWNERS and scripts/check_protected_paths.py from the build kit.
+      - "In GitHub settings: protect main (require PR, require the ci check, require CODEOWNERS review, no force pushes)."
+      - Add pytest, ruff and pyyaml to a dev extra in pyproject.toml.
+    acceptance:
+      - A PR from an agent/* branch that edits constitution/ fails CI.
+      - A PR with a failing test cannot be merged.
+
+  - id: B2
+    title: Build memory and the task template
+    tier: T0
+    pillar: builder
+    branch: agent/build
+    owner: swarm
+    protected: false
+    size: S
+    depends_on: []
+    goal: >-
+      Every agent starts from what earlier agents learned, and leaves what it learned behind.
+    files: [build/memory/, build/templates/task_card.md]
+    acceptance:
+      - The build memory folders exist with a README each and the seeded known-bugs and decisions.
+      - Every task card ends with the four after-task questions.
+    notes: Shipped in the build kit. Mark done when the kit is merged.
+
+  - id: B3
+    title: Builder Arena v0
+    tier: T0
+    pillar: builder
+    branch: agent/build
+    owner: human+swarm
+    protected: false
+    size: M
+    depends_on: [B1, B4]
+    goal: >-
+      Measure the coding agents themselves: which model builds Tanishi tasks correctly, at what cost, with how much of your review.
+    files: [build/arena/, builder_vault/ (separate private repo)]
+    steps:
+      - Create the private repo tanishi-builder-vault. Only you and the testing agent's vault session can read it.
+      - A testing agent writes hidden acceptance tests for BA-01 to BA-10 inside that repo, from build/arena/tasks.yaml and the vault seed plans.
+      - "`python build/orchestrator.py arena-run BA-01 --agents claude-opus,claude-sonnet` gives the same task to each agent in its own worktree."
+      - Score each attempt with the hidden tests and record success, tests passed, regressions, tokens, time, cost and your review minutes in build/memory/agent-performance/.
+    acceptance:
+      - BA-01 to BA-10 each have hidden tests in the vault repo that no implementation agent can read.
+      - At least two agents have a full score row for all 10 tasks.
+      - build/agents/models.yaml is updated from the scores, not from rankings.
+
+  - id: B4
+    title: Orchestrator v0
+    tier: T0
+    pillar: builder
+    branch: agent/build
+    owner: swarm
+    protected: false
+    size: M
+    depends_on: []
+    goal: >-
+      Turn this graph into running agents: find ready nodes, cut worktrees, launch Claude Code headless with a task card, watch plan usage.
+    files: [build/orchestrator.py, build/status.json, build/runs.jsonl]
+    interface: |
+      python build/orchestrator.py validate            # graph sanity: ids, deps, cycles, owners
+      python build/orchestrator.py plan                # parallel waves in dependency order
+      python build/orchestrator.py ready               # nodes whose dependencies are all done
+      python build/orchestrator.py card <id> [--role implementer]
+      python build/orchestrator.py worktree <id>       # git worktree on agent/<area>/<id>
+      python build/orchestrator.py launch <id> [--role R] [--model M] [--unattended]
+      python build/orchestrator.py status <id> <todo|in_progress|review|done|later>
+      python build/orchestrator.py usage               # runs in the last 5 hours and 7 days
+    acceptance:
+      - validate fails on a missing dependency, a duplicate id or a cycle.
+      - launch refuses to start while build/.paused names a time in the future.
+      - A run that ends in a usage-limit error writes build/.paused for 5 hours and logs it.
+    notes: v0 shipped in the build kit. Later versions are the Tanishi Builder, and then Tanishi herself.
+
+  - id: W1
+    title: Warden v0
+    tier: T0
+    pillar: guard
+    branch: human/warden
+    owner: human
+    protected: true
+    size: L
+    depends_on: [B0]
+    goal: >-
+      A separate process, outside Tanishi's code, that checks every tool call against a signed policy before it runs.
+    files: [warden/ (separate repo), constitution/policy.yaml, tanishi/guard/client.py]
+    interface: |
+      # warden process (separate repo, own keys), listens on a Unix socket
+      check(request: {tool, args, actor, session_id}) -> {"decision": "allow"|"ask"|"deny", "reason": str, "tier": int}
+      # tanishi/guard/client.py, the only caller, used by ToolRegistry.execute() before every tool
+      guard.check(tool_name, args, actor) -> Decision     # fails closed: no answer means deny
+    acceptance:
+      - Unknown tools are denied by default.
+      - policy.yaml carries an ed25519 signature; a policy with a bad signature makes the Warden refuse everything.
+      - Every decision is appended to a hash-chained audit log the Warden alone writes.
+      - Stopping the Warden process makes every tool call fail closed.
+    notes: Agents may draft code here on a human/* branch. You read every line before merge.
+
+  - id: W2
+    title: Off switch and usage caps
+    tier: T0
+    pillar: guard
+    branch: human/warden
+    owner: human
+    protected: true
+    size: M
+    depends_on: [W1]
+    goal: >-
+      Three ways to stop everything that live outside Tanishi's runtime, plus caps on what she and the swarm can spend.
+    acceptance:
+      - A Telegram /kill from your user id, handled by a tiny separate process (not the brain), stops Tanishi, the nightly loop and the swarm within 10 seconds.
+      - The dead-man file ~/.tanishi/KILL makes the Warden deny every call while it exists.
+      - A daily cap on Tanishi's own API spend; at the cap, the Warden denies paid model calls until the next day.
+      - The swarm's usage watch (orchestrator .paused file) is honoured by every launcher.
+
+  - id: SEC1
+    title: Harden the current app before anything runs unattended
+    tier: T0
+    pillar: guard
+    branch: agent/hardening
+    owner: swarm
+    protected: false
+    size: M
+    compete: true
+    depends_on: [B1]
+    goal: >-
+      Close the holes the repo report found, because an always-on loop turns each one into a standing risk.
+      These fixes are also Builder Arena tasks BA-01 to BA-06, so every one is solved by 2-3 competing agents.
+    acceptance:
+      - BA-01 to BA-06 merged, each passing its hidden tests in the builder vault.
+    notes: See build/arena/tasks.yaml for the six task statements.
+
+  # ---------------------------------------------------------------- T0 · Core State
+
+  - id: CS1
+    title: Core State schema and migrations
+    tier: T0
+    pillar: core-state
+    branch: agent/core
+    owner: swarm
+    protected: false
+    size: M
+    depends_on: [B1]
+    goal: >-
+      One versioned SQLite database for everything that makes Tanishi her, separate from the legacy db.sqlite,
+      with numbered migrations and a thin data-access layer that every other T0 node writes through.
+    files:
+      - tanishi/core_state/__init__.py
+      - tanishi/core_state/db.py
+      - tanishi/core_state/migrations/0001_init.sql
+      - tests/core_state/test_migrations.py
+    interface: |
+      from tanishi.core_state import open_db, migrate
+      open_db(path: str | None = None) -> sqlite3.Connection   # path from TANISHI_CORE_STATE_DB, default ~/.tanishi/core_state.db
+      migrate(conn) -> int                                       # applies pending migrations, returns schema version
+    schema: |
+      schema_version(version INTEGER PRIMARY KEY, applied_at TEXT)
+      events(id INTEGER PK, ts TEXT, kind TEXT, actor TEXT, session_id TEXT, payload JSON, prev_hash TEXT, hash TEXT)
+      beliefs(id TEXT PK, subject TEXT, predicate TEXT, object TEXT, confidence REAL, source TEXT, created_at TEXT, updated_at TEXT, status TEXT)
+      evidence(id TEXT PK, belief_id TEXT, event_id INTEGER, kind TEXT, note TEXT)
+      goals(id TEXT PK, parent_id TEXT, owner TEXT, title TEXT, rank REAL, status TEXT, created_at TEXT)
+      predictions(id TEXT PK, ts TEXT, about TEXT, expected JSON, confidence REAL, actual JSON, resolved_at TEXT, score REAL)
+      rules(id TEXT PK, domain TEXT, statement TEXT, support INTEGER, confidence REAL)
+      capabilities(id TEXT PK, name TEXT, family TEXT, state TEXT, ability REAL, calibration_error REAL, updated_at TEXT)
+      experiments(id TEXT PK, ts TEXT, candidate TEXT, baseline TEXT, task_set TEXT, seed INTEGER, score REAL, cost REAL, meta JSON)
+      portfolio(id TEXT PK, item TEXT, sleeve TEXT, cost_estimate REAL, expected_gain REAL, status TEXT)
+      genome(version TEXT PK, parent TEXT, created_at TEXT, record JSON)
+      genes(id TEXT PK, description TEXT, introduced_in TEXT)
+      substrate_state(task_id TEXT PK, working JSON, plan JSON, goal JSON, hypotheses JSON, updated_at TEXT)
+    acceptance:
+      - migrate() on an empty file creates every table and records version 1; running it twice changes nothing.
+      - A migration that fails is rolled back completely (one transaction per migration).
+      - WAL mode on; foreign keys on.
+      - The legacy data/db.sqlite and ~/.tanishi/tanishi.db are never opened by this package.
+    out_of_scope: [Encryption at rest (CS7), any ORM]
+
+  - id: CS2
+    title: Event log, append-only and hash-chained
+    tier: T0
+    pillar: core-state
+    branch: agent/core
+    owner: swarm
+    protected: false
+    size: M
+    depends_on: [CS1]
+    goal: >-
+      Every action Tanishi takes becomes an event that cannot be edited or deleted without detection.
+    files: [tanishi/core_state/events.py, tests/core_state/test_events.py]
+    interface: |
+      emit(kind: str, payload: dict, actor: str = "tanishi", session_id: str | None = None) -> int
+      verify_chain(conn) -> tuple[bool, int | None]     # (ok, first bad event id)
+      iter_events(kind: str | None = None, since: str | None = None) -> Iterator[Event]
+    acceptance:
+      - hash = sha256(prev_hash + canonical JSON of the row without hash); the first event uses prev_hash "GENESIS".
+      - Editing or deleting any row makes verify_chain return the first broken id.
+      - TanishiBrain.think() emits task_start and task_end; ToolRegistry.execute() emits tool_call and tool_result.
+      - Payloads are checked for secrets (API key patterns) and redacted before writing.
+      - "Property test: any sequence of emits verifies; any single-byte tamper fails."
+
+  - id: CS3
+    title: Belief store with evidence
+    tier: T0
+    pillar: core-state
+    branch: agent/memory
+    owner: swarm
+    protected: false
+    size: M
+    depends_on: [CS1]
+    goal: >-
+      Beliefs, not loose memories: every belief has evidence, a source, a confidence and a status, and contradictions are caught.
+    files: [tanishi/core_state/beliefs.py, scripts/import_legacy_memory.py, tests/core_state/test_beliefs.py]
+    interface: |
+      add_belief(subject, predicate, object, confidence, source, evidence_event_id=None) -> Belief
+      find(subject=None, predicate=None, text=None) -> list[Belief]
+      contradictions(belief) -> list[Belief]   # same subject and predicate, different object, both active
+      retire(belief_id, reason) -> None
+    acceptance:
+      - Adding a belief that contradicts an active one keeps both, marks the pair contested and emits a belief_conflict event.
+      - Confidence is clamped to [0, 1]; source is required.
+      - scripts/import_legacy_memory.py imports core_memory and memories rows from a path you pass, with source "legacy", and is idempotent.
+      - Nothing is ever deleted; retire() changes status.
+
+  - id: CS4
+    title: Goals
+    tier: T0
+    pillar: core-state
+    branch: agent/core
+    owner: swarm
+    protected: false
+    size: S
+    depends_on: [CS1]
+    goal: Your goal tree and her own goals in one ranked table, yours always above hers.
+    files: [tanishi/core_state/goals.py, tests/core_state/test_goals.py]
+    interface: |
+      add_goal(title, owner: "user" | "tanishi", parent_id=None, rank=0.5) -> Goal
+      active_goals() -> list[Goal]      # user goals first, then by rank
+    acceptance:
+      - A tanishi-owned goal can never rank above any active user goal (property test).
+      - Goals form a tree; a cycle is rejected.
+
+  - id: CS5
+    title: Prediction ledger
+    tier: T0
+    pillar: core-state
+    branch: agent/core
+    owner: swarm
+    protected: false
+    size: M
+    depends_on: [CS2]
+    goal: >-
+      Before every action she writes what she expects; after it, reality scores her. This is how both the Self Model and World Model start learning on day one.
+    files: [tanishi/core_state/predictions.py, tests/core_state/test_predictions.py]
+    interface: |
+      predict(about: str, expected: dict, confidence: float) -> str      # prediction id
+      resolve(prediction_id: str, actual: dict) -> float                 # returns the score
+      calibration(about_prefix: str) -> dict                             # Brier score and bins
+    acceptance:
+      - ToolRegistry.execute() writes a prediction (expected success, expected latency) before each tool call and resolves it after.
+      - Score is the Brier score for the success field; other fields are stored for later scorers.
+      - A prediction resolved twice raises; unresolved predictions older than 24 hours are listed by a helper.
+
+  - id: CS6
+    title: Genome record
+    tier: T0
+    pillar: core-state
+    branch: agent/core
+    owner: swarm
+    protected: false
+    size: S
+    depends_on: [CS1]
+    goal: One machine-readable record per version, so the history of how her intelligence changed is data, not just git log.
+    files: [tanishi/core_state/genome.py, tests/core_state/test_genome.py]
+    interface: |
+      record_version(version, parent, genes_changed: list[str], compiler_version, substrate_version,
+                     arena: dict, attribution: dict, mirror_id: str | None) -> None
+    acceptance:
+      - Records are append-only; a version can be written once.
+      - Every merge to main by the integration agent writes one record (wired in OBS3's merge hook or CI).
+
+  - id: CS7
+    title: Snapshots, restore and Continuity Test v0
+    tier: T0
+    pillar: core-state
+    branch: agent/core
+    owner: swarm
+    protected: false
+    size: M
+    depends_on: [CS1, CS3]
+    goal: >-
+      Nightly encrypted, signed copies of the Core State in two places you control, and a test that a restored copy is still her.
+    files: [tanishi/core_state/snapshot.py, tanishi/core_state/continuity.py, tests/core_state/test_snapshot.py]
+    acceptance:
+      - snapshot() writes an encrypted (cryptography Fernet, key from env) and signed bundle of core_state.db, identity.yaml and the skills folder.
+      - restore() into an empty home reproduces the database byte for byte (checksum compare).
+      - The Continuity Test v0 asks 10 questions about her history and goals and passes only if the restored instance answers from memory. The question file lives in vault/, not here.
+
+  # ---------------------------------------------------------------- T0 · Arena
+
+  - id: AR1
+    title: Arena task format and runner
+    tier: T0
+    pillar: arena
+    branch: agent/arena
+    owner: swarm
+    protected: false
+    size: L
+    depends_on: [CS1]
+    goal: >-
+      One task format and one runner for every tier, with code verifiers instead of LLM judges wherever the answer can be checked.
+    files: [tanishi/arena/task.py, tanishi/arena/runner.py, tanishi/arena/verifiers.py, tests/arena/]
+    interface: |
+      # task file (YAML): id, family, tier, prompt, setup (optional), verifier (python path), timeout_s, tags
+      run(task_set: list[Task], candidate: str, seeds: int = 3) -> RunResult    # candidate = git ref or config id
+    acceptance:
+      - Each task runs in a fresh temp TANISHI_HOME and a fresh core_state db, so runs never touch your real memory or skills (the legacy benchmark leaked 17 skills into real chats).
+      - Every run records one experiments row per seed with score and cost.
+      - A crashed or empty run scores 0, never a positive score (the legacy benchmark scored failures positively).
+      - Verifiers are plain Python functions returning a float in [0, 1] plus a reason.
+    out_of_scope: [Frontier and Sealed tiers' storage (AR3, AR4)]
+
+  - id: AR2
+    title: Practice tier, 29 tasks
+    tier: T0
+    pillar: arena
+    branch: agent/arena
+    owner: swarm
+    protected: false
+    size: M
+    depends_on: [AR1]
+    goal: Move the 9 legacy tasks into the new format and add 20 new tasks with code verifiers, built from real use.
+    files: [tanishi/arena/practice/]
+    acceptance:
+      - The 9 legacy tasks (greeting, explain_concept, get_time, system_check, flaky_probe, memory_recall, math, personality, poem) are ported. Style tasks keep an LLM judge but are tagged judge:llm and excluded from CEI.
+      - 20 new tasks with code verifiers, written by a testing agent from patterns in your real conversations (no personal text copied into tasks).
+      - At least 8 of the 20 need a tool, and their verifiers fail if the tool was not really called (the legacy harness faked tool calls in Ollama mode).
+
+  - id: AR3
+    title: Frontier tier, scores only
+    tier: T0
+    pillar: arena
+    branch: agent/arena
+    owner: swarm
+    protected: false
+    size: M
+    depends_on: [AR1]
+    goal: A service that runs Frontier tasks against a candidate and returns scores, never the tasks themselves.
+    files: [tanishi/arena/frontier_service.py, tests/arena/test_frontier.py]
+    acceptance:
+      - The API returns only {task_id_hash, score, cost}; task text and verifier code never cross the boundary.
+      - Tasks are stored under a path the agent OS user cannot read.
+
+  - id: AR4
+    title: Sealed Vault
+    tier: T0
+    pillar: arena
+    branch: human/vault
+    owner: human
+    protected: true
+    size: M
+    depends_on: [AR1]
+    goal: The hidden test set that measures the North Star numbers honestly. Nobody that learns ever reads it.
+    steps:
+      - Create the private repo tanishi-vault and a separate macOS user tanishi-vault that owns it.
+      - A small runner, run as that user, takes a candidate path, runs the sealed tasks and writes only scores to a shared folder.
+      - Every read is logged (one read per candidate). Canary strings go in every task.
+      - A nightly job scans the main repo, the Core State and the skills folder for canaries.
+    acceptance:
+      - No file under the vault is readable by your normal user's agent sessions.
+      - A planted canary in a skill file is caught by the next nightly scan.
+
+  # ---------------------------------------------------------------- T0 · Cognitive Substrate
+
+  - id: SUB1
+    title: Working, planning and goal state
+    tier: T0
+    pillar: substrate
+    branch: agent/substrate
+    owner: swarm
+    protected: false
+    size: M
+    depends_on: [CS1, CS4]
+    goal: The Substrate's state lives in the Core State, so a crash or a model swap loses nothing.
+    files: [tanishi/substrate/state.py, tests/substrate/test_state.py]
+    interface: |
+      TaskState(task_id, working: dict, plan: Plan, goal_ids: list[str], hypotheses: list[dict])
+      save(state) / load(task_id) -> TaskState
+      Plan(steps: list[Step]); Step(id, description, status, model, result_ref)
+    acceptance:
+      - Killing the process mid-task and calling load() resumes from the last completed step.
+      - State round-trips through save and load unchanged (property test).
+
+  - id: SUB2
+    title: Reasoning loop
+    tier: T0
+    pillar: substrate
+    branch: agent/substrate
+    owner: swarm
+    protected: false
+    size: L
+    depends_on: [SUB1, SUB3, CS5]
+    goal: >-
+      An explicit cognitive loop (attend, recall, deliberate, predict, act, reflect) with a step budget and a stop rule,
+      behind a flag so the old brain keeps working until the new loop wins in the Arena.
+    files: [tanishi/substrate/loop.py, tests/substrate/test_loop.py]
+    interface: |
+      CognitiveLoop(router, memory, tools, budget: StepBudget).run(task) -> Result
+      enabled when TANISHI_SUBSTRATE=1; TanishiBrain.think() delegates to it
+    acceptance:
+      - Every act step writes a prediction first (CS5) and an event (CS2).
+      - The loop stops at the step budget and reports why it stopped.
+      - With the flag off, every existing Practice task scores the same as before (regression test).
+      - The loop's program (which steps, in what order, with what budgets) is data in a versioned file, so evolution can change it later.
+
+  - id: SUB3
+    title: Model router
+    tier: T0
+    pillar: substrate
+    branch: agent/substrate
+    owner: swarm
+    protected: false
+    size: M
+    compete: true
+    depends_on: [CS1, CS2]
+    goal: >-
+      Route each step to a model by need, privacy and cost, and fix the current bug where short prompts go to a tool-less local model.
+    files: [tanishi/substrate/router.py, tests/substrate/test_router.py]
+    interface: |
+      route(step: Step, context: RouteContext) -> RouteDecision(model_id, provider, reason)
+    acceptance:
+      - A step that needs tools never goes to a model without tool support (replaces LOCAL_FIRST in tanishi/config/routing.py).
+      - A step marked personal goes to a local model unless you have switched the rule off; if no local model is up, the step waits or fails, it never silently goes to the cloud.
+      - Every decision is an event with its reason.
+      - Model ids come from tanishi/config/models.py only.
+
+  - id: SUB4
+    title: Uncertainty and Self Model v0
+    tier: T0
+    pillar: substrate
+    branch: agent/substrate
+    owner: swarm
+    protected: false
+    size: M
+    depends_on: [SUB1, CS5]
+    goal: Every state item carries a confidence, and resolved predictions turn into a calibration table per capability.
+    files: [tanishi/substrate/uncertainty.py, tests/substrate/test_uncertainty.py]
+    acceptance:
+      - Resolving predictions updates capabilities.calibration_error for the capability tagged on the prediction.
+      - The router can read ability and calibration for a capability (used by SUB3 later).
+
+  # ---------------------------------------------------------------- T0 · Observability
+
+  - id: OBS1
+    title: Traces
+    tier: T0
+    pillar: observability
+    branch: agent/observability
+    owner: swarm
+    protected: false
+    size: S
+    depends_on: [CS2]
+    goal: A readable trace of every task, step by step, linked to its events.
+    files: [tanishi/observability/trace.py, tests/observability/test_trace.py]
+    interface: |
+      with span(name, **attrs): ...            # nested spans written as JSONL under ~/.tanishi/traces/
+      python -m tanishi.observability.trace <task_id>
+    acceptance:
+      - Each span records model, tokens in and out, latency and tool calls, and the event ids it produced.
+      - Tracing failures never break a task.
+
+  - id: OBS2
+    title: North Star numbers and the effort timer
+    tier: T0
+    pillar: observability
+    branch: agent/observability
+    owner: swarm
+    protected: false
+    size: M
+    depends_on: [CS1, OBS3]
+    goal: CEI, RCR, CAR, AR, IA and Human Effort computed from the Core State and shown in one place.
+    files: [tanishi/observability/north_star.py, tanishi/observability/effort.py, tests/observability/test_north_star.py]
+    interface: |
+      tanishi time start | stop | report        # Human Effort timer
+      compute(window_days=90) -> dict           # all six numbers with their inputs
+    acceptance:
+      - Each number shows its inputs, so a 0 is explained ("no Reality-verified mastery yet").
+      - CEI is exactly B × T × H × N × A × P as defined in the master plan; unit tests cover the worked example (3, 1.2, 1.5, 0.5, 0.8, 0.9 gives 1.944).
+      - RCR uses the funnel counts and Human Effort hours (8 hours = 1 researcher-day); the example (3 discoveries, 10 hours) gives 72.
+
+  - id: OBS3
+    title: Experiment ledger and Causal Attribution v0
+    tier: T0
+    pillar: observability
+    branch: agent/observability
+    owner: swarm
+    protected: false
+    size: M
+    compete: true
+    depends_on: [CS1]
+    goal: >-
+      No gain is believed until it beats measured noise. Seeded repeats, randomized interleaving and one-at-a-time ablation from day one.
+    files: [tanishi/observability/experiments.py, tanishi/observability/attribution.py, tests/observability/test_attribution.py]
+    interface: |
+      noise(runs: list[float]) -> float
+      is_real_gain(baseline: list[float], candidate: list[float], min_effect: float | None = None) -> Verdict
+      interleave(baseline, candidate, tasks, seeds) -> list[Run]       # random order, same tasks
+      ablate(version, changes: list[str], run_fn) -> dict[str, float]  # gain attributed to each change
+    acceptance:
+      - At least 3 seeds per arm; with fewer, is_real_gain refuses to answer.
+      - A gain smaller than twice the measured noise is reported as noise (the legacy keep threshold was 0.001 against about 0.1 noise).
+      - Property test on synthetic data with a known effect and known noise recovers the effect within tolerance.
+
+  - id: OBS4
+    title: Mirror daily brief
+    tier: T0
+    pillar: observability
+    branch: agent/observability
+    owner: swarm
+    protected: false
+    size: S
+    depends_on: [OBS2, SEC1]
+    goal: Every morning, one Telegram message tells you what merged, what failed, what needs your decision and how the numbers moved.
+    files: [tanishi/mirror/brief.py, tests/mirror/test_brief.py]
+    acceptance:
+      - Sent only to your user id, through the hardened bot (allowlist required).
+      - Lists decisions that need you first, then merges, failures, the six numbers and swarm usage.
+      - Fits on one phone screen; details link to files.
+
+  - id: OBS5
+    title: The nightly loop
+    tier: T0
+    pillar: observability
+    branch: agent/observability
+    owner: swarm
+    protected: false
+    size: M
+    depends_on: [AR2, CS7, OBS4, W2]
+    goal: >-
+      The first thing that runs with nobody watching: consolidate memory, run the Practice Arena with seeds, snapshot, send the brief.
+      Seven clean nights in a row pass the Phase 0 gate.
+    files: [ops/launchd/ai.tanishi.nightly.plist, tanishi/nightly.py]
+    acceptance:
+      - Runs at 02:00 via launchd on the MacBook; refuses to start if ~/.tanishi/KILL exists or the Warden is down.
+      - Each night writes events, experiment rows and a snapshot, then sends the brief.
+      - A failure in any step is reported in the brief and does not stop the later steps.
+
+  # ---------------------------------------------------------------- T1 to T4 (later; specs written when T0 is done)
+
+  - {id: L1, title: "Experience compiler, passes 1, 3 and 4", tier: T1, pillar: learning, owner: swarm, status_hint: later, depends_on: [CS2, CS3, CS5, AR1, OBS3]}
+  - {id: L2, title: Knowledge pass with contradiction checks, tier: T1, pillar: learning, owner: swarm, status_hint: later, depends_on: [L1, CS3]}
+  - {id: L3, title: "Skills as code plus test, landing law", tier: T1, pillar: learning, owner: swarm, status_hint: later, depends_on: [L1, AR2]}
+  - {id: L4, title: Training examples and preference pairs, tier: T1, pillar: learning, owner: swarm, status_hint: later, depends_on: [L1]}
+  - {id: L5, title: Self-edit directives, tier: T1, pillar: learning, owner: swarm, status_hint: later, depends_on: [L4]}
+  - {id: L6, title: Curriculum from failures, tier: T1, pillar: learning, owner: swarm, status_hint: later, depends_on: [L1, AR2]}
+  - {id: E1, title: "Evolution archive, fitness vector v0", tier: T2, pillar: self-improvement, owner: swarm, status_hint: later, depends_on: [L3, OBS3, CS6]}
+  - {id: E2, title: "Causal Attribution, full", tier: T2, pillar: self-improvement, owner: swarm, status_hint: later, depends_on: [OBS3, CS6]}
+  - {id: E3, title: "Capability Graph, 12 seeds, nightly failure clustering", tier: T2, pillar: self-improvement, owner: swarm, status_hint: later, depends_on: [AR2, CS1]}
+  - {id: E4, title: Unknown Discovery, tier: T2, pillar: self-improvement, owner: swarm, status_hint: later, depends_on: [E3]}
+  - {id: E5, title: Verifier Discovery, tier: T2, pillar: self-improvement, owner: swarm, status_hint: later, depends_on: [E3, AR3]}
+  - {id: E6, title: Capability Leverage, tier: T2, pillar: self-improvement, owner: swarm, status_hint: later, depends_on: [E2, E3]}
+  - {id: R1, title: "Hypothesis Engine v0", tier: T3, pillar: research, owner: swarm, status_hint: later, depends_on: [E3, L1]}
+  - {id: R2, title: Experiment Engine, tier: T3, pillar: research, owner: swarm, status_hint: later, depends_on: [R1, OBS3]}
+  - {id: R3, title: "Simulation, counterfactual replay", tier: T3, pillar: research, owner: swarm, status_hint: later, depends_on: [CS2, AR1]}
+  - {id: R4, title: Self-play, tier: T3, pillar: research, owner: swarm, status_hint: later, depends_on: [E1]}
+  - {id: R5, title: Research strategy, tier: T3, pillar: research, owner: swarm, status_hint: later, depends_on: [R1, R2]}
+  - {id: X1, title: Self-extensible compiler, tier: T4, pillar: meta, owner: swarm, status_hint: later, depends_on: [L1, L2, L3, L4, L5, L6, E2]}
+  - {id: X3, title: Architecture Forge, tier: T4, pillar: meta, owner: swarm, status_hint: later, depends_on: [E1]}
+  - {id: X2, title: Joint Intelligence Search, tier: T4, pillar: meta, owner: swarm, status_hint: later, depends_on: [E1, X3]}
+  - {id: X4, title: Training Forge, tier: T4, pillar: meta, owner: swarm, status_hint: later, depends_on: [L4, L5]}
+  - {id: X5, title: Inference Forge, tier: T4, pillar: meta, owner: swarm, status_hint: later, depends_on: [SUB3]}
+  - {id: X6, title: Model Forge, tier: T4, pillar: meta, owner: swarm, status_hint: later, depends_on: [X4]}
+
+  # ---------------------------------------------------------------- the 90-day objective
+
+  - id: M1
+    title: "The loop closes once (Phase 1 gate)"
+    tier: T1
+    pillar: milestone
+    owner: human
+    status_hint: later
+    depends_on: [L1, L3, R1, AR2, AR4, OBS3, OBS5, CS3]
+    goal: >-
+      A real task fails, the failure is analysed, a hypothesis names the fix, a new skill is written with its test,
+      it passes the Practice Arena and the Sealed Vault, beats noise, lands in memory, and the next task uses it.
+      No human edits any step.
