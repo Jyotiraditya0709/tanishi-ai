@@ -17,6 +17,9 @@ from tanishi.core_state import migrate, open_db
 from tanishi.core_state.genome import record_version
 
 BREAK = pytest.mark.xfail(strict=True, reason="red-team break, see build/memory/runs/redteam-CS6-20261009.md")
+BREAK_EXAM_CONFLICT = pytest.mark.xfail(
+    strict=True, reason="duplicate genes conflict with the CS6 exam, see build/memory/open-problems/CS6-repair-conflicts.md"
+)
 REFUSALS = (ValueError, TypeError, sqlite3.Error)
 
 
@@ -39,7 +42,6 @@ def _rows():
 
 
 # G1 ---------------------------------------------------------------------------------------------------------
-@BREAK
 def test_g1_generator_genes_are_not_silently_dropped():
     """all() drains a generator, then list() sees nothing: the record claims no gene changed."""
     try:
@@ -50,7 +52,6 @@ def test_g1_generator_genes_are_not_silently_dropped():
 
 
 # G2 ---------------------------------------------------------------------------------------------------------
-@BREAK
 def test_g2_self_parent_is_rejected():
     """SQLite checks the FK at end of statement, so a row may be its own parent: a cycle in the history."""
     with pytest.raises(REFUSALS):
@@ -59,7 +60,6 @@ def test_g2_self_parent_is_rejected():
 
 
 # G3 ---------------------------------------------------------------------------------------------------------
-@BREAK
 @pytest.mark.parametrize("variant", ["abc\n", " abc", "abc ", "abc\t"])
 def test_g3_whitespace_variant_of_a_version_cannot_be_written_twice(variant):
     """`git rev-parse` output keeps its newline. A hook that retries with the stripped sha writes a second record."""
@@ -72,7 +72,6 @@ def test_g3_whitespace_variant_of_a_version_cannot_be_written_twice(variant):
 
 
 # G4 ---------------------------------------------------------------------------------------------------------
-@BREAK
 def test_g4_non_string_dict_keys_do_not_change_on_the_way_in():
     """json turns {1: 'x'} into {"1": 'x'}: what is read back is not what was written."""
     try:
@@ -82,7 +81,6 @@ def test_g4_non_string_dict_keys_do_not_change_on_the_way_in():
     assert json.loads(_rows()[0][2])["arena"] == {1: "x"}
 
 
-@BREAK
 def test_g4b_tuples_do_not_turn_into_lists():
     try:
         _rec(attribution={"g": (1, 2)})
@@ -92,7 +90,6 @@ def test_g4b_tuples_do_not_turn_into_lists():
 
 
 # G5 ---------------------------------------------------------------------------------------------------------
-@BREAK
 @pytest.mark.parametrize("field,bad", [
     ("arena", [1, 2]), ("arena", "pass"), ("arena", None),
     ("attribution", ["x"]), ("attribution", 3),
@@ -108,8 +105,7 @@ def test_g5_field_types_follow_the_interface(field, bad):
 
 
 # G6 ---------------------------------------------------------------------------------------------------------
-@BREAK
-@pytest.mark.parametrize("genes", [[""], ["  "], ["a", "a"]])
+@pytest.mark.parametrize("genes", [[""], ["  "], pytest.param(["a", "a"], marks=BREAK_EXAM_CONFLICT)])
 def test_g6_genes_changed_has_no_blank_or_duplicate_names(genes):
     with pytest.raises(REFUSALS):
         _rec("v-genes", genes_changed=genes)
