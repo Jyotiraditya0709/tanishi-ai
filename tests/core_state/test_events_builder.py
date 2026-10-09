@@ -361,20 +361,39 @@ def test_unserialisable_tool_input_is_still_recorded(conn):
     assert "unserialisable" in call["input"]
 
 
-def test_a_broken_log_does_not_break_the_tool(conn, monkeypatch, caplog):
+def test_a_broken_log_stops_the_tool(conn, monkeypatch, caplog):
     from tanishi.tools import registry as reg_mod
 
-    def broken(*a, **k):
-        raise sqlite3.OperationalError("disk I/O error")
+    ran = []
+    reg = reg_mod.ToolRegistry()
+    reg.register(reg_mod.ToolDefinition(name="t", description="t", input_schema={},
+                                        handler=lambda: ran.append(1) or "ran"))
+    _break_the_db(monkeypatch)
+    with caplog.at_level(logging.WARNING):
+        res = asyncio.run(reg.execute("t", {}))
+    assert ran == []
+    assert not res.success and res.error == reg_mod.EVENT_LOG_UNAVAILABLE and res.tool_name == "t"
+    assert "OperationalError" in caplog.text
 
-    monkeypatch.setattr(reg_mod, "emit", broken)
+
+def test_a_failed_tool_result_write_does_not_undo_the_result(conn, monkeypatch, caplog):
+    from tanishi.tools import registry as reg_mod
+
+    real_emit = reg_mod.emit
+
+    def emit_calls_only(kind, *a, **k):
+        if kind == "tool_result":
+            raise sqlite3.OperationalError("disk I/O error")
+        return real_emit(kind, *a, **k)
+
+    monkeypatch.setattr(reg_mod, "emit", emit_calls_only)
     with caplog.at_level(logging.WARNING):
         res = asyncio.run(_registry().execute("t", {"text": "a"}))
     assert res.success and res.output == "a" * 5000
     assert "OperationalError" in caplog.text
 
 
-def test_task_events_share_a_task_id(conn, monkeypatch):
+def _brain(monkeypatch, reply, tool_calls=()):
     import types
 
     from tanishi.core import brain as brain_mod
@@ -383,17 +402,52 @@ def test_task_events_share_a_task_id(conn, monkeypatch):
     b.config = types.SimpleNamespace(max_conversation_history=5)
     b.conversation_history = []
     b.memory_manager = None
+    b.tool_registry = _registry()
 
     async def fake(self, system_prompt, messages):
-        return brain_mod.BrainResponse(content="ok", model_used="ollama")
+        for name in tool_calls:
+            await self.tool_registry.execute(name, {"text": "x"})
+        return reply(brain_mod)
 
     monkeypatch.setattr(brain_mod.TanishiBrain, "_select_model", lambda self, text: "ollama")
     monkeypatch.setattr(brain_mod.TanishiBrain, "_think_ollama", fake)
     monkeypatch.setattr(brain_mod.TanishiBrain, "_response_ok_for_skill_learning", staticmethod(lambda r: False))
+    return b
+
+
+def test_task_events_share_a_task_id(conn, monkeypatch):
+    b = _brain(monkeypatch, lambda m: m.BrainResponse(content="ok", model_used="ollama"))
     asyncio.run(b.think("hi"))
     start, end = list(iter_events(kind="task_start")), list(iter_events(kind="task_end"))
     assert start[0].payload["task_id"] == end[0].payload["task_id"]
     assert end[0].payload["success"] is True and end[0].payload["model_used"] == "ollama"
+    assert end[0].payload["error"] == ""
+
+
+def test_tool_events_inside_a_task_carry_its_task_id_and_session(conn, monkeypatch):
+    b = _brain(monkeypatch, lambda m: m.BrainResponse(content="ok", model_used="ollama"), tool_calls=("t", "t"))
+    b._active_session_id = "sess-7"
+    asyncio.run(b.think("hi"))
+    events = list(iter_events())
+    task_id = events[0].payload["task_id"]
+    assert [e.kind for e in events] == ["task_start", "tool_call", "tool_result", "tool_call", "tool_result",
+                                        "task_end"]
+    assert {e.session_id for e in events} == {"sess-7"}
+    assert {e.payload["task_id"] for e in events} == {task_id}
+    calls = [e.payload["call_id"] for e in events if e.kind.startswith("tool_")]
+    assert calls[0] == calls[1] and calls[2] == calls[3] and calls[0] != calls[2]
+
+
+def test_tool_events_outside_a_task_have_no_task_id(conn):
+    asyncio.run(_registry().execute("t", {}))
+    assert [(e.payload["task_id"], e.session_id) for e in iter_events()] == [(None, None), (None, None)]
+
+
+def test_explicit_error_field_marks_the_task_failed(conn, monkeypatch):
+    b = _brain(monkeypatch, lambda m: m.BrainResponse(content="sorry", model_used="claude (opus)", error="APIError: x"))
+    asyncio.run(b.think("hi"))
+    end = next(iter_events(kind="task_end")).payload
+    assert end["success"] is False and end["error"] == "APIError: x"
 
 
 def test_emit_uses_the_core_state_db_only(tmp_path, monkeypatch):

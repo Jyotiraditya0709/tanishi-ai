@@ -263,7 +263,6 @@ def _stub_brain(monkeypatch, reply):
     return b
 
 
-@BREAK
 def test_task_end_success_is_false_when_the_model_call_failed(conn, monkeypatch):
     """W1: _think swallows API and Ollama errors into a normal BrainResponse(model_used='... (error)').
     task_end then says success=True, so failure analysis (the whole M1 loop) never sees the failure."""
@@ -274,7 +273,6 @@ def test_task_end_success_is_false_when_the_model_call_failed(conn, monkeypatch)
     assert end.payload["success"] is False
 
 
-@BREAK
 def test_tool_events_can_be_tied_to_their_task_and_to_each_other(conn, monkeypatch):
     """W2: neither task nor tool events carry session_id or a shared id, and tool_call / tool_result carry
     no call id. With two concurrent tasks, or two parallel calls of one tool, the pairs cannot be matched."""

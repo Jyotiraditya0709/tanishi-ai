@@ -21,6 +21,8 @@ import re
 import sqlite3
 import uuid
 from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -76,6 +78,27 @@ _LONE_SURROGATE = re.compile("[\ud800-\udfff]")
 MAX_DEPTH = 32  # a container nested deeper than this becomes _TOO_DEEP
 MAX_CHARS = 4000  # every string is clipped to this many characters, after redaction
 _TOO_DEEP = "[TRUNCATED: nested too deep]"
+
+
+# The task (and session) the running code works for: think() sets it, tool events read it, so a
+# tool call can be tied to its task. A ContextVar, so concurrent tasks each see their own.
+_current_task: ContextVar[tuple[str | None, str | None]] = ContextVar("tanishi_current_task",
+                                                                      default=(None, None))
+
+
+def current_task() -> tuple[str | None, str | None]:
+    """(task_id, session_id) of the task this code runs for, or (None, None) outside any task."""
+    return _current_task.get()
+
+
+@contextmanager
+def task_scope(task_id: str, session_id: str | None = None) -> Iterator[None]:
+    """Make `task_id` and `session_id` the current task for the code inside the block."""
+    token = _current_task.set((task_id, session_id))
+    try:
+        yield
+    finally:
+        _current_task.reset(token)
 
 
 @dataclass(frozen=True)
