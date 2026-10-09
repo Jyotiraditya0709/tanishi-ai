@@ -158,21 +158,3 @@ def test_json_columns_keep_json_text(tmp_path):
     assert kind == "text"
     assert value == "1.0"
     assert json.loads(value) == 1.0
-
-
-def test_json_columns_keep_json_text(tmp_path):
-    """Decision 0006: JSON lives in TEXT columns, so a JSON scalar like '1.0' stays text."""
-    import json
-
-    from tanishi.core_state import migrate, open_db
-
-    conn = open_db(str(tmp_path / "cs.db"))
-    migrate(conn)
-    conn.execute(
-        "INSERT INTO genome (version, parent, created_at, record) VALUES (?, ?, ?, ?)",
-        ("v1", None, "2026-10-09T00:00:00", "1.0"),
-    )
-    value, kind = conn.execute("SELECT record, typeof(record) FROM genome WHERE version = 'v1'").fetchone()
-    assert kind == "text"
-    assert value == "1.0"
-    assert json.loads(value) == 1.0
