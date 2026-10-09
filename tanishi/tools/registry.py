@@ -20,6 +20,7 @@ from typing import Any, Callable, Optional
 from dataclasses import dataclass, field
 
 from tanishi.config import tool_params as tool_cfg
+from tanishi.core_state import predictions
 from tanishi.core_state.events import current_task, emit, redact
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,25 @@ def _jsonable(value: Any) -> Any:
         except Exception:  # noqa: BLE001 - a broken __repr__ must not stop the call being logged
             text = f"<{type(value).__name__}>"
         return {"unserialisable": text}
+
+
+def _predict(tool_name: str) -> str | None:
+    """Write the prediction for one tool call (node CS5). The ledger only learns, so a broken one only warns."""
+    try:
+        p_success, latency_ms = predictions.tool_forecast(tool_name)
+        return predictions.predict(f"tool:{tool_name}", {"success": True, "latency_ms": latency_ms}, p_success)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("could not write the prediction for tool %s: %s", tool_name, type(e).__name__)
+        return None
+
+
+def _resolve(prediction_id: str | None, success: bool, latency_ms: float | None) -> None:
+    if prediction_id is None:
+        return
+    try:
+        predictions.resolve(prediction_id, {"success": success, "latency_ms": latency_ms})
+    except Exception as e:  # noqa: BLE001
+        logger.warning("could not resolve the prediction for a tool call: %s", type(e).__name__)
 
 
 @dataclass
@@ -141,14 +161,18 @@ class ToolRegistry:
         Core State event log as a tool_call event followed by a tool_result event; both
         carry the same call_id, and the task_id and session_id of the current task.
         Fails closed: if the tool_call event cannot be written, the tool does not run.
+        Before the tool_call event, a prediction (expected success and latency) goes into the
+        prediction ledger; it is resolved with what happened, whatever happened (node CS5).
         """
         task_id, session_id = current_task()
         ids = {"tool": tool_name, "call_id": uuid.uuid4().hex, "task_id": task_id}
+        prediction_id = _predict(tool_name)
         try:
             emit("tool_call", {**ids, "input": _jsonable(tool_input)}, session_id=session_id)
         except Exception as e:  # noqa: BLE001 - never log the payload: it may hold what we failed to redact
             logger.warning("tool %s not run, its tool_call event could not be recorded: %s",
                            tool_name, type(e).__name__)
+            _resolve(prediction_id, False, None)
             return ToolResult(success=False, output="", tool_name=tool_name, error=EVENT_LOG_UNAVAILABLE)
         result: ToolResult | None = None
         try:
@@ -156,8 +180,10 @@ class ToolRegistry:
             return result
         finally:
             if result is None:  # cancelled, or the approval callback raised
+                _resolve(prediction_id, False, None)
                 _record("tool_result", {**ids, "success": False, "error": "did not finish"}, session_id)
             else:
+                _resolve(prediction_id, result.success, round(result.execution_time_ms, 1))
                 _record("tool_result", {
                     **ids,
                     "success": result.success,
