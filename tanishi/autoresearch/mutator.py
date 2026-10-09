@@ -77,17 +77,48 @@ def _parse_json_block(raw: str) -> dict | list | None:
         return None
 
 
+# personality-protection boundary: must stay in sync with autoresearch.MUTABLE_FILES
+_MUTABLE_TARGET_FILES = frozenset({
+    "tanishi/config/prompts.py",
+    "tanishi/config/personality.py",
+    "tanishi/config/routing.py",
+    "tanishi/config/tool_params.py",
+    "tanishi/config/memory_params.py",
+    "tanishi/voice/voice_config.py",
+    "tanishi/autoresearch/mutation_rules.json",
+    "tanishi/autoresearch/scoring_config.json",
+    "tanishi/skills/count_tokens/skill.json",
+    "tanishi/skills/summarize_clipboard/skill.json",
+})
+
+_TUNING_ADDENDUM_OPENER = 'TUNING_ADDENDUM = """'
+
+
+def _normalize_target_path(target_file: str) -> str:
+    return target_file.replace("\\", "/").lstrip("/")
+
+
+def _is_blocked_mutation_target(target_file: str) -> bool:
+    """Reject DNA, autoresearch internals, and any path outside MUTABLE_FILES."""
+    path = _normalize_target_path(target_file)
+    if path.endswith("autoresearch.py"):
+        return True
+    if path.endswith("core/personality.py"):
+        return True
+    return path not in _MUTABLE_TARGET_FILES
+
+
 # --- system_prompt mutations ---
 
 def mut_prompt_more_concise(root: Path):
     f = root / "tanishi/config/prompts.py"
     text = _read(f)
-    if not text or "SYSTEM_PROMPT" not in text:
+    if not text or _TUNING_ADDENDUM_OPENER not in text:
         return None
     addition = '\n\nResponse style: Default to 1-2 sentences. Expand only if asked or genuinely needed.'
     if addition in text:
         return None
-    new = text.replace('SYSTEM_PROMPT = """', f'SYSTEM_PROMPT = """{addition}\n', 1)
+    new = text.replace(_TUNING_ADDENDUM_OPENER, f'{_TUNING_ADDENDUM_OPENER}{addition}\n', 1)
     return {
         "description": "system_prompt: add explicit conciseness instruction",
         "file": str(f),
@@ -98,12 +129,12 @@ def mut_prompt_more_concise(root: Path):
 def mut_prompt_tool_first(root: Path):
     f = root / "tanishi/config/prompts.py"
     text = _read(f)
-    if not text:
+    if not text or _TUNING_ADDENDUM_OPENER not in text:
         return None
     addition = '\n\nWhen the user asks about anything current/factual/system-related, prefer using a tool over guessing.'
     if addition in text:
         return None
-    new = text.replace('"""', f'{addition}\n"""', 1)
+    new = text.replace(_TUNING_ADDENDUM_OPENER, f'{_TUNING_ADDENDUM_OPENER}{addition}\n', 1)
     return {
         "description": "system_prompt: encourage tool-first behavior",
         "file": str(f),
@@ -465,7 +496,7 @@ def _build_dynamic_rule_fn(rule_obj: dict) -> Callable:
     def _fn(root: Path):
         if rtype != "text_replace":
             return None
-        if not target_file or target_file.endswith("autoresearch.py"):
+        if not target_file or _is_blocked_mutation_target(target_file):
             return None
         f = root / target_file
         text = _read(f)
@@ -533,7 +564,7 @@ def mut_meta_add_rule_entry(root: Path, reflections_context: str = ""):
     if str(change.get("type", "")) != "text_replace":
         return None
     tfile = str(change.get("target_file", ""))
-    if (not tfile) or tfile.endswith("autoresearch.py"):
+    if (not tfile) or _is_blocked_mutation_target(tfile):
         return None
     if not str(change.get("search", "")).strip():
         return None

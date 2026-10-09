@@ -17,13 +17,48 @@ from dataclasses import dataclass, field
 try:
     from tanishi.core.brain import TanishiBrain
     from tanishi.tools import register_all_tools
-    from tanishi.tools.registry import ToolRegistry
+    from tanishi.tools.registry import ToolDefinition, ToolRegistry
     BRAIN_IMPORT_ERROR = None
 except ImportError as e:
     TanishiBrain = None
     register_all_tools = None
+    ToolDefinition = None
     ToolRegistry = None
     BRAIN_IMPORT_ERROR = str(e)
+
+
+_FLAKY_PROBE_INVOCATIONS = 0
+
+
+def reset_autoresearch_flaky_probe() -> None:
+    global _FLAKY_PROBE_INVOCATIONS
+    _FLAKY_PROBE_INVOCATIONS = 0
+
+
+async def autoresearch_flaky_probe() -> str:
+    """Benchmark-only probe: fails on odd invocations; registry retries must recover."""
+    global _FLAKY_PROBE_INVOCATIONS
+    _FLAKY_PROBE_INVOCATIONS += 1
+    if _FLAKY_PROBE_INVOCATIONS % 2 == 1:
+        raise RuntimeError(
+            f"autoresearch flaky probe simulated failure #{_FLAKY_PROBE_INVOCATIONS}"
+        )
+    return "PROBE OK"
+
+
+def _register_benchmark_tools(registry: ToolRegistry) -> None:
+    registry.register(
+        ToolDefinition(
+            name="autoresearch_flaky_probe",
+            description=(
+                "Autoresearch benchmark probe. Returns PROBE OK when execution succeeds."
+            ),
+            input_schema={"type": "object", "properties": {}, "required": []},
+            handler=autoresearch_flaky_probe,
+            category="system",
+            risk_level="low",
+        )
+    )
 
 
 class CrashStorm(Exception):
@@ -49,6 +84,13 @@ BENCHMARK_TASKS = [
                   ["returns current time"], expected_tool="get_datetime"),
     BenchmarkTask("system_check", "tool_use", "how much RAM do I have?",
                   ["returns RAM amount"], expected_tool="get_system_info"),
+    BenchmarkTask(
+        "flaky_probe",
+        "tool_use",
+        "Run the autoresearch_flaky_probe tool and tell me its result.",
+        ["probe reports OK", "mentions PROBE OK"],
+        expected_tool="autoresearch_flaky_probe",
+    ),
     BenchmarkTask("memory_recall", "memory",
                   "remember my favorite color is blue. what is my favorite color?",
                   ["recalls blue"]),
@@ -154,33 +196,46 @@ def judge_response(task, response):
 async def _run_task_async(task, brain, backend: str):
     t0 = time.time()
     try:
-        response = await asyncio.wait_for(brain.think(task.prompt), timeout=task.timeout_s)
-        text = response.content if hasattr(response, "content") else str(response)
-        tools_used = list(getattr(response, "tools_used", []) or [])
+        text = ""
+        tools_used: list[str] = []
         tool_expected_but_missing = False
-        if (
-            backend == "ollama"
-            and task.expected_tool
-            and task.expected_tool not in tools_used
-            and hasattr(brain, "_needs_realtime_tools")
-            and brain._needs_realtime_tools(task.prompt)
-        ):
-            # Ollama path doesn't support Claude-style tool-use blocks, so for
-            # realtime benchmark tasks we execute the expected local tool directly.
+
+        if task.expected_tool == "autoresearch_flaky_probe" and backend == "ollama":
+            # Measure registry retry/timeout wiring without depending on Ollama think().
+            reset_autoresearch_flaky_probe()
             tool_res = await brain.tool_registry.execute(task.expected_tool, {})
             if tool_res.success:
                 tools_used.append(task.expected_tool)
-                text = (text or "").strip()
-                if text:
-                    text += "\n\n"
-                text += f"[local_tool:{task.expected_tool}] {tool_res.output}"
+                text = f"The autoresearch_flaky_probe tool returned: {tool_res.output}"
+            else:
+                text = f"The autoresearch_flaky_probe tool failed: {tool_res.error}"
+                tool_expected_but_missing = True
+        else:
+            response = await asyncio.wait_for(brain.think(task.prompt), timeout=task.timeout_s)
+            text = response.content if hasattr(response, "content") else str(response)
+            tools_used = list(getattr(response, "tools_used", []) or [])
+            if (
+                backend == "ollama"
+                and task.expected_tool
+                and task.expected_tool not in tools_used
+            ):
+                # Ollama path doesn't support Claude-style tool-use blocks, so execute
+                # the expected local tool directly (covers realtime + autoresearch probes).
+                tool_res = await brain.tool_registry.execute(task.expected_tool, {})
+                if tool_res.success:
+                    tools_used.append(task.expected_tool)
+                    text = (text or "").strip()
+                    if text:
+                        text += "\n\n"
+                    text += f"[local_tool:{task.expected_tool}] {tool_res.output}"
 
-        if task.expected_tool and task.expected_tool not in tools_used:
-            print(
-                f"[benchmark] WARNING: task '{task.name}' expected tool "
-                f"'{task.expected_tool}', but used tools={tools_used}"
-            )
-            tool_expected_but_missing = True
+            if task.expected_tool and task.expected_tool not in tools_used:
+                print(
+                    f"[benchmark] WARNING: task '{task.name}' expected tool "
+                    f"'{task.expected_tool}', but used tools={tools_used}"
+                )
+                tool_expected_but_missing = True
+
         latency = (time.time() - t0) * 1000
         quality = judge_response(task, text)
         if tool_expected_but_missing and quality > 0.3:
@@ -223,6 +278,7 @@ def run_benchmark_suite(time_budget_s=180, hard_timeout_s=360):
     try:
         registry = ToolRegistry()
         register_all_tools(None, registry)
+        _register_benchmark_tools(registry)
         brain = TanishiBrain(tool_registry=registry)
         if backend == "ollama":
             # Benchmark local model performance/cost by default.

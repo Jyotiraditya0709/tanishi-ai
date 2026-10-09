@@ -27,6 +27,7 @@ import json
 import time
 import shutil
 import argparse
+import subprocess
 import traceback
 from pathlib import Path
 from datetime import datetime
@@ -35,7 +36,7 @@ from dataclasses import dataclass, asdict
 # Tanishi internals — adjust imports if your project layout differs
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from tanishi.autoresearch.benchmark import run_benchmark_suite, BenchmarkResult
+from tanishi.autoresearch.benchmark import BenchmarkResult, TaskResult
 from tanishi.autoresearch.mutator import propose_mutation, apply_mutation, revert_mutation
 from tanishi.autoresearch.scorer import composite_score
 from tanishi.autoresearch.reflections import (
@@ -178,6 +179,77 @@ def load_baseline() -> float | None:
                     pass
     return 0.0 if best is None else best
 
+
+def run_benchmark_subprocess(
+    time_budget_s: int = TIME_BUDGET_SECONDS,
+    hard_timeout_s: int = HARD_TIMEOUT_SECONDS,
+) -> BenchmarkResult:
+    """Run benchmark suite in a fresh child process; return parsed BenchmarkResult."""
+    cmd = [
+        sys.executable,
+        "-m",
+        "tanishi.autoresearch.benchmark_runner",
+        "--hard-timeout",
+        str(hard_timeout_s),
+        "--time-budget",
+        str(time_budget_s),
+    ]
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=hard_timeout_s + 60,
+            env=os.environ.copy(),
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("benchmark_timeout") from exc
+
+    if proc.stderr:
+        sys.stderr.write(proc.stderr)
+        if not proc.stderr.endswith("\n"):
+            sys.stderr.write("\n")
+
+    stdout = proc.stdout or ""
+    lines = [line for line in stdout.strip().split("\n") if line.strip()]
+    if not lines:
+        raise RuntimeError(f"empty stdout (exit {proc.returncode})")
+
+    try:
+        parsed = json.loads(lines[-1])
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"unparseable stdout: {exc}") from exc
+
+    if proc.returncode != 0 or parsed.get("status") == "crash":
+        err = parsed.get("error", f"exit code {proc.returncode}")
+        raise RuntimeError(err)
+
+    if parsed.get("status") != "ok":
+        raise RuntimeError(f"unexpected status {parsed.get('status')!r}")
+
+    task_results = [
+        TaskResult(
+            name=tr["name"],
+            category=tr["category"],
+            success=tr["success"],
+            quality_score=tr["quality_score"],
+            latency_ms=tr["latency_ms"],
+            error=tr.get("error"),
+            response_text="",
+            tool_usage=tr.get("tool_usage") or [],
+        )
+        for tr in parsed.get("task_results", [])
+    ]
+    return BenchmarkResult(
+        parsed["quality"],
+        parsed["latency_ms"],
+        parsed["reliability"],
+        task_results,
+        parsed.get("total_time_s", 0.0),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Single experiment
 # ---------------------------------------------------------------------------
@@ -235,7 +307,7 @@ def run_one_experiment(experiment_num: int, area: str, baseline: float) -> Exper
     # 4. Run the benchmark suite (this is where we actually measure Tanishi)
     t0 = time.time()
     try:
-        bench: BenchmarkResult = run_benchmark_suite(
+        bench: BenchmarkResult = run_benchmark_subprocess(
             time_budget_s=TIME_BUDGET_SECONDS,
             hard_timeout_s=HARD_TIMEOUT_SECONDS,
         )
@@ -322,7 +394,7 @@ def main():
     if baseline is None or args.establish_baseline:
         print("\n[baseline] no previous baseline, running benchmark on current state...")
         try:
-            bench = run_benchmark_suite(
+            bench = run_benchmark_subprocess(
                 time_budget_s=TIME_BUDGET_SECONDS,
                 hard_timeout_s=HARD_TIMEOUT_SECONDS,
             )
