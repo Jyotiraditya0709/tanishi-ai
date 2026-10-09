@@ -40,6 +40,14 @@ def hard_exit(task, candidate, seed):
     os._exit(3)
 
 
+def leave_background_job(task, candidate, seed):
+    """Starts a job that would write the file named by the prompt after the attempt is over."""
+    import subprocess
+
+    subprocess.Popen(["sh", "-c", f"sleep 2; touch '{task.prompt}'"])
+    return "done"
+
+
 def hang(task, candidate, seed):
     time.sleep(60)
     return "late"

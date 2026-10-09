@@ -120,6 +120,14 @@ def test_setup_that_hangs_is_killed_with_its_children(tmp_path):
     assert not marker.exists()
 
 
+def test_background_jobs_do_not_outlive_the_attempt(tmp_path):
+    marker = tmp_path / "late"
+    res = run([_task("always_one", prompt=str(marker))], "cfg", seeds=1, executor=_ex("leave_background_job"))
+    assert res.results[0].score == 1.0
+    time.sleep(3)
+    assert not marker.exists()
+
+
 def test_run_result_summaries(outer_db):
     tasks = [_task("always_one", 1), _task("is_four", 2)]
     res = run(tasks, "cfg", seeds=2, executor=_ex("echo"))
