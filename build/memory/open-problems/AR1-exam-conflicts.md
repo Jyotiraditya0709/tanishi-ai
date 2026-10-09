@@ -1,5 +1,7 @@
 # AR1 · exam conflicts (written by the implementer)
 
+**Status:** C1 is resolved (fixed in 48e0027).
+
 The implementer did not edit the exam. The human or the tester decides.
 
 ## C1 · `test_unresolvable_verifier_scores_zero` cannot run (exam bug, not a spec conflict) · RESOLVED

@@ -1,5 +1,7 @@
 # AR1 repair round · tests that still fail after the human's fixes (2026-10-09)
 
+**Status:** resolved. Both proofs (RT-2, RT-8) were rewritten to the human's decisions and their xfail marks removed.
+
 The implementer did not edit these tests or remove their markers. Both stay `xfail(strict=True)` and show as `xfailed`.
 The human or the red-team agent decides. The target "0 xfailed" is not reachable without changing them.
 

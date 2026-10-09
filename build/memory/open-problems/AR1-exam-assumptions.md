@@ -1,5 +1,7 @@
 # AR1 · what the spec leaves open (written by the tester, from the spec alone)
 
+**Status:** `run()` now requires an executor (decision 0012); notes below that assume it works without one are superseded.
+
 The AR1 card names `Task`, `run(task_set, candidate, seeds=3) -> RunResult`, the YAML fields and four acceptance lines.
 It does not name everything an exam needs. The exam in `tests/arena/` assumes only the items below. If the implementer
 disagrees with one, say so in `build/memory/open-problems/AR1-exam-conflicts.md` and the human decides; do not edit the tests.

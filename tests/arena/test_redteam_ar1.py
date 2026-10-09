@@ -3,11 +3,12 @@
 They are xfail(strict=True): they fail today because the break is real. When a fix lands the test XPASSes,
 strict mode turns that into an error, and the fixer removes the marker. Do not delete or weaken them.
 """
-import contextlib
 import dataclasses
-import json
 import os
+import subprocess
+import sys
 import tempfile
+import time
 
 import pytest
 
@@ -50,10 +51,11 @@ def test_executor_does_not_see_the_verifier_path(outer_db):
     assert res.results[0].score == 1.0
 
 
-@pytest.mark.xfail(strict=True, reason="RT-2 high: with no executor the candidate is never used, any ref scores 1.0")
 def test_candidate_that_does_not_exist_cannot_score_without_an_executor(outer_db):
-    res = run([_task("always_one")], "refs/heads/does-not-exist-anywhere", seeds=1)
-    assert res.results[0].score == 0.0
+    # decision 0012 item 1: no executor means the candidate is never used, so run() refuses and writes nothing
+    with pytest.raises(ValueError):
+        run([_task("always_one")], "refs/heads/does-not-exist-anywhere", seeds=1)
+    assert _rows(outer_db) == []
 
 
 def test_verifier_reasons_do_not_leak_the_expected_answer():
@@ -98,11 +100,36 @@ def test_crash_reason_does_not_store_prompt_or_env(outer_db, monkeypatch):
     assert "sk-test-NOT-A-REAL-KEY" not in stored
 
 
-@pytest.mark.xfail(strict=True, reason="RT-8 medium: a run that dies half way leaves rows indistinguishable from a full run")
-def test_partial_run_is_marked_incomplete(outer_db):
-    first = _task("always_one", n=1)
-    bad = _task("always_one", n=2, timeout_s=1e300)  # RT-6 is the easiest way to kill run() half way
-    with contextlib.suppress(OverflowError):  # the break itself (RT-6)
-        run([first, bad], "cfg", seeds=1, executor=_ex("reads_verifier_module"))
-    metas = [json.loads(r[4]) for r in _rows(outer_db)]
-    assert metas and all(m.get("complete") is False or "incomplete" in m for m in metas)
+def test_partial_run_leaves_no_rows(outer_db, tmp_path):
+    # decision 0012 item 7: rows are written in one transaction at the end, so a run killed after its first
+    # attempt finished leaves nothing behind. The second attempt waits until the parent kills the whole run.
+    (tmp_path / "hang_second.py").write_text(
+        "import pathlib, time\n"
+        "def ex(brief, candidate, seed):\n"
+        "    if brief.id == 'rt-2':\n"
+        f"        pathlib.Path({str(tmp_path / 'second_started')!r}).write_text('x')\n"
+        "        time.sleep(20)\n"
+        "    return 'an answer'\n"
+    )
+    script = tmp_path / "child.py"
+    script.write_text(
+        "import sys\n"
+        f"sys.path[:0] = {sys.path!r}\n"
+        f"sys.path[:0] = [{str(tmp_path)!r}, {os.path.dirname(__file__)!r}]\n"
+        "from hang_second import ex\n"
+        "from test_redteam_ar1 import _task\n"
+        "from tanishi.arena.runner import run\n"
+        "run([_task('always_one', n=1), _task('always_one', n=2)], 'cfg', seeds=1, executor=ex)\n"
+    )
+    proc = subprocess.Popen([sys.executable, str(script)], env=os.environ.copy())
+    try:
+        deadline = time.monotonic() + 60
+        while not (tmp_path / "second_started").exists():
+            assert proc.poll() is None and time.monotonic() < deadline, "the run ended before the second attempt began"
+            time.sleep(0.05)
+        proc.kill()  # the first attempt has finished; the run dies before it can write
+        proc.wait(timeout=30)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+    assert _rows(outer_db) == []
