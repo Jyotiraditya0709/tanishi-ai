@@ -17,6 +17,7 @@ import re
 from datetime import datetime
 from typing import Optional
 
+from tanishi.config.models import CLAUDE_DEFAULT
 from tanishi.memory.manager import MemoryManager, MemoryEntry
 
 
@@ -62,7 +63,7 @@ class AutoMemory:
         self,
         user_message: str,
         assistant_response: str,
-        model: str = "claude-sonnet-4-20250514",
+        model: str = CLAUDE_DEFAULT,
     ) -> list[MemoryEntry]:
         """
         Analyze a conversation exchange and auto-store any facts.

@@ -20,6 +20,8 @@ Falls back gracefully:
 """
 import asyncio
 import os
+
+from tanishi.config.models import OPENAI_TTS, OPENAI_TTS_VOICE_DEFAULT
 import tempfile
 import threading
 from pathlib import Path
@@ -96,7 +98,7 @@ def _get_brain():
 # ================================================================
 # STEP 4: Direct OpenAI TTS (no TanishiSpeaker dependency)
 # ================================================================
-def _openai_tts_to_file(text: str, voice: str = "nova") -> str | None:
+def _openai_tts_to_file(text: str, voice: str = OPENAI_TTS_VOICE_DEFAULT) -> str | None:
     """Call OpenAI TTS, save MP3 to temp file, return path. None on failure.
 
     Default voice changed from 'onyx' (male) to 'nova' (female) — Tanishi
@@ -109,7 +111,7 @@ def _openai_tts_to_file(text: str, voice: str = "nova") -> str | None:
 
     voice = os.getenv("TANISHI_VOICE", voice).lower()
     if voice not in {"alloy", "echo", "fable", "onyx", "nova", "shimmer"}:
-        voice = "nova"
+        voice = OPENAI_TTS_VOICE_DEFAULT
 
     try:
         import httpx
@@ -120,7 +122,7 @@ def _openai_tts_to_file(text: str, voice: str = "nova") -> str | None:
             req = urllib.request.Request(
                 "https://api.openai.com/v1/audio/speech",
                 data=json.dumps({
-                    "model": "tts-1",
+                    "model": OPENAI_TTS,
                     "voice": voice,
                     "input": text,
                 }).encode("utf-8"),
@@ -150,7 +152,7 @@ def _openai_tts_to_file(text: str, voice: str = "nova") -> str | None:
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": "tts-1",
+                    "model": OPENAI_TTS,
                     "voice": voice,
                     "input": text,
                     "speed": 1.0,

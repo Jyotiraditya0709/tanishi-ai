@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Optional, Callable
 from dataclasses import dataclass
 
+from tanishi.config.models import OPENAI_TTS
+
 
 @dataclass
 class VoiceConfig:
@@ -157,7 +159,7 @@ class TanishiSpeaker:
                             "Content-Type": "application/json",
                         },
                         json={
-                            "model": "tts-1",
+                            "model": OPENAI_TTS,
                             "voice": voice_id,
                             "input": phrase,
                             "speed": self.config.speed,
@@ -235,7 +237,7 @@ class TanishiSpeaker:
                         "Content-Type": "application/json",
                     },
                     json={
-                        "model": "tts-1",
+                        "model": OPENAI_TTS,
                         "voice": voice_id,
                         "input": text,
                         "speed": self.config.speed,

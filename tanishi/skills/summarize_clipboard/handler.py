@@ -1,6 +1,8 @@
 import os
 import asyncio
 
+from tanishi.config.models import CLAUDE_DEFAULT
+
 
 async def summarize_clipboard() -> str:
     try:
@@ -27,7 +29,7 @@ async def summarize_clipboard() -> str:
         client = anthropic.Anthropic(api_key=api_key)
         msg = await asyncio.to_thread(
             client.messages.create,
-            model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514"),
+            model=os.getenv("CLAUDE_MODEL", CLAUDE_DEFAULT),
             max_tokens=500,
             messages=[{"role": "user", "content": prompt}],
         )

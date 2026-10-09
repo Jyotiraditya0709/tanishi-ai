@@ -21,6 +21,8 @@ import time
 from typing import Optional
 from dataclasses import dataclass
 
+from tanishi.config.models import OPENAI_REALTIME, OPENAI_STT
+
 from rich.console import Console
 from rich.panel import Panel
 
@@ -44,7 +46,7 @@ Voice conversation rules:
 @dataclass
 class RealtimeConfig:
     voice: str = "onyx"  # alloy, ash, ballad, coral, echo, fable, onyx, nova, sage, shimmer, verse
-    model: str = "gpt-realtime"
+    model: str = OPENAI_REALTIME
     temperature: float = 0.7
     show_transcript: bool = True
     vad_threshold: float = 0.5
@@ -98,7 +100,7 @@ class RealtimeVoicePipeline:
                     "output": {"format": "pcm16", "voice": self.config.voice},
                 },
                 "input_audio_transcription": {
-                    "model": "whisper-1",
+                    "model": OPENAI_STT,
                 },
                 "turn_detection": {
                     "type": "server_vad",

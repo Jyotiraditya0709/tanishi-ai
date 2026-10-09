@@ -16,6 +16,8 @@ Smart about resources:
 
 import os
 import io
+
+from tanishi.config.models import CLAUDE_DEFAULT
 import time
 import base64
 import asyncio
@@ -327,7 +329,7 @@ class ScreenWatcher:
 # Integration with Brain — Claude Vision analysis
 # ============================================================
 
-def create_vision_analyzer(claude_client, model: str = "claude-sonnet-4-20250514"):
+def create_vision_analyzer(claude_client, model: str = CLAUDE_DEFAULT):
     """
     Create the callback function that sends screenshots to Claude Vision.
     This connects the watcher to Claude's eyes.

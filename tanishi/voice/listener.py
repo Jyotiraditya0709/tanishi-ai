@@ -17,6 +17,8 @@ import numpy as np
 from typing import Optional, Callable
 from dataclasses import dataclass
 
+from tanishi.config.models import OPENAI_STT
+
 
 @dataclass
 class TranscriptionResult:
@@ -165,7 +167,7 @@ class TanishiListener:
                         headers={"Authorization": f"Bearer {self._openai_key}"},
                         files={"file": ("audio.wav", f, "audio/wav")},
                         data={
-                            "model": "whisper-1",
+                            "model": OPENAI_STT,
                             "language": "en",
                             "prompt": "Hey Tanishi, Tanishi",  # Hint for the name
                         },
