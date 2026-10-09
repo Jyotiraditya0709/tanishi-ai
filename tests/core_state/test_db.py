@@ -142,10 +142,37 @@ def test_second_migration_applies_and_failed_one_rolls_back_alone(tmp_path, monk
         c.close()
 
 
-def test_json_columns_have_numeric_affinity(conn):
-    """Documents a spec gotcha (open-problems/CS1.md): bare JSON numbers come back as numbers."""
+def test_json_columns_keep_json_text(tmp_path):
+    """Decision 0006: JSON lives in TEXT columns, so a JSON scalar like '1.0' stays text."""
+    import json
+
+    from tanishi.core_state import migrate, open_db
+
+    conn = open_db(str(tmp_path / "cs.db"))
     migrate(conn)
-    conn.execute("INSERT INTO genome(version, record) VALUES ('v', '1.0')")
-    conn.execute("INSERT INTO genome(version, record) VALUES ('w', '{\"a\": 1}')")
-    rows = dict(conn.execute("SELECT version, record FROM genome"))
-    assert rows == {"v": 1, "w": '{"a": 1}'}
+    conn.execute(
+        "INSERT INTO genome (version, parent, created_at, record) VALUES (?, ?, ?, ?)",
+        ("v1", None, "2026-10-09T00:00:00", "1.0"),
+    )
+    value, kind = conn.execute("SELECT record, typeof(record) FROM genome WHERE version = 'v1'").fetchone()
+    assert kind == "text"
+    assert value == "1.0"
+    assert json.loads(value) == 1.0
+
+
+def test_json_columns_keep_json_text(tmp_path):
+    """Decision 0006: JSON lives in TEXT columns, so a JSON scalar like '1.0' stays text."""
+    import json
+
+    from tanishi.core_state import migrate, open_db
+
+    conn = open_db(str(tmp_path / "cs.db"))
+    migrate(conn)
+    conn.execute(
+        "INSERT INTO genome (version, parent, created_at, record) VALUES (?, ?, ?, ?)",
+        ("v1", None, "2026-10-09T00:00:00", "1.0"),
+    )
+    value, kind = conn.execute("SELECT record, typeof(record) FROM genome WHERE version = 'v1'").fetchone()
+    assert kind == "text"
+    assert value == "1.0"
+    assert json.loads(value) == 1.0

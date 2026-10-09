@@ -1,6 +1,6 @@
 -- 0001: initial Core State schema (architecture v1.0, node CS1).
 -- migrate() runs this file inside one transaction and records the version row itself.
--- Columns typed JSON hold JSON text (see build/memory/open-problems/CS1.md on their affinity).
+-- Columns typed TEXT hold TEXT text (see build/memory/open-problems/CS1.md on their affinity).
 
 CREATE TABLE schema_version (
     version INTEGER PRIMARY KEY,
@@ -13,7 +13,7 @@ CREATE TABLE events (
     kind TEXT,
     actor TEXT,
     session_id TEXT,
-    payload JSON,
+    payload TEXT,
     prev_hash TEXT,
     hash TEXT
 );
@@ -52,9 +52,9 @@ CREATE TABLE predictions (
     id TEXT PRIMARY KEY,
     ts TEXT,
     about TEXT,
-    expected JSON,
+    expected TEXT,
     confidence REAL,
-    actual JSON,
+    actual TEXT,
     resolved_at TEXT,
     score REAL
 );
@@ -86,7 +86,7 @@ CREATE TABLE experiments (
     seed INTEGER,
     score REAL,
     cost REAL,
-    meta JSON
+    meta TEXT
 );
 
 CREATE TABLE portfolio (
@@ -102,7 +102,7 @@ CREATE TABLE genome (
     version TEXT PRIMARY KEY,
     parent TEXT,
     created_at TEXT,
-    record JSON
+    record TEXT
 );
 
 CREATE TABLE genes (
@@ -113,9 +113,9 @@ CREATE TABLE genes (
 
 CREATE TABLE substrate_state (
     task_id TEXT PRIMARY KEY,
-    working JSON,
-    plan JSON,
-    goal JSON,
-    hypotheses JSON,
+    working TEXT,
+    plan TEXT,
+    goal TEXT,
+    hypotheses TEXT,
     updated_at TEXT
 );
