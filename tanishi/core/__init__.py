@@ -9,6 +9,9 @@ from typing import Optional
 from pydantic_settings import BaseSettings
 from pydantic import AliasChoices, Field
 
+from tanishi import __version__ as _TANISHI_VERSION
+from tanishi.config.models import CLAUDE_DEFAULT, OLLAMA_DEFAULT
+
 # Load `.env` from the repo root first (so `python -m tanishi.api.server` works even if cwd ≠ project).
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _REPO_ENV = _PROJECT_ROOT / ".env"
@@ -24,13 +27,13 @@ class TanishiConfig(BaseSettings):
 
     # --- Identity ---
     name: str = "Tanishi"
-    version: str = "0.5.0"
+    version: str = _TANISHI_VERSION
 
     # --- LLM Providers ---
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
-    claude_model: str = Field(default="claude-sonnet-4-20250514", alias="CLAUDE_MODEL")
+    claude_model: str = Field(default=CLAUDE_DEFAULT, alias="CLAUDE_MODEL")
     ollama_base_url: str = Field(default="http://localhost:11434", alias="OLLAMA_BASE_URL")
-    ollama_model: str = Field(default="gemma3:4b", alias="OLLAMA_MODEL")
+    ollama_model: str = Field(default=OLLAMA_DEFAULT, alias="OLLAMA_MODEL")
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
 
     # --- Paths (accept both DB_PATH and TANISHI_DB_PATH) ---

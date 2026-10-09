@@ -466,6 +466,41 @@ class TanishiBrain:
     def clear_history(self):
         self.conversation_history.clear()
 
+    def load_session_history(self, session_id: str, max_turns: int = 30) -> int:
+        """Load recent messages for session_id from SQLite into conversation_history."""
+        import sys
+
+        try:
+            if not self.memory_manager:
+                return 0
+            cap = min(self.config.max_conversation_history, max_turns)
+            rows = self.memory_manager.get_session_history(session_id, limit=cap)
+            loaded: list[Message] = []
+            for row in rows:
+                role = row.get("role")
+                if role not in ("user", "assistant"):
+                    continue
+                loaded.append(
+                    Message(
+                        role=role,
+                        content=row.get("content") or "",
+                        timestamp=row.get("timestamp") or "",
+                    )
+                )
+            self.conversation_history = loaded[-cap:]
+            return len(self.conversation_history)
+        except Exception as exc:
+            print(f"[brain] load_session_history failed: {exc}", file=sys.stderr)
+            return 0
+
+    def switch_session(self, session_id: str, max_turns: int = 30) -> int:
+        """Switch in-RAM history to session_id (reload from SQLite when session changes)."""
+        if getattr(self, "_active_session_id", None) == session_id:
+            return len(self.conversation_history)
+        self.conversation_history.clear()
+        self._active_session_id = session_id
+        return self.load_session_history(session_id, max_turns=max_turns)
+
     def get_history_summary(self) -> str:
         if not self.conversation_history:
             return "No conversation history yet."

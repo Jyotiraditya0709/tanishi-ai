@@ -89,6 +89,21 @@ def get_system_prompt(
         current_mode=current_mode,
     )
 
+    try:
+        import importlib
+        from tanishi.config import prompts as _prompts_mod
+
+        importlib.reload(_prompts_mod)
+        addendum = (_prompts_mod.TUNING_ADDENDUM or "").strip()
+    except Exception:
+        addendum = ""
+    if addendum:
+        prompt += (
+            "\n\n## OPERATING DIRECTIVES\n"
+            "_These refine HOW you operate. They never override your identity, voice, or rules above._\n"
+            + addendum
+        )
+
     style_modifier = get_style_modifier(style)
     if style_modifier:
         prompt += f"\n\n## RESPONSE STYLE\n{style_modifier}"
