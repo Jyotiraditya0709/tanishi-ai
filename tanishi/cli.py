@@ -1051,6 +1051,11 @@ class TanishiCLI:
 
 
 def main():
+    # `tanishi time start | stop | report`: the Human Effort timer (OBS2). Handled before the chat starts.
+    if sys.argv[1:2] == ["time"]:
+        from tanishi.observability.effort import cli as time_cli
+        sys.exit(time_cli(sys.argv[2:]))
+
     from dotenv import load_dotenv
     load_dotenv()
 
