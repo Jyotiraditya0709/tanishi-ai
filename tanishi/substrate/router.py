@@ -15,9 +15,14 @@ Rules, in order (decision 0020):
 A refusal raises `RouteRefused`. Every decision, refusals included, is one `model_route` event carrying its reason.
 The step text is never logged, since it can be personal. If the event cannot be written, `route()` raises: a decision
 that is not in the log does not happen. Model ids come only from `tanishi.config.models`.
+
+`route()` blocks on the Warden's socket when the gate is on. Async callers (the loop, the brain) must use
+`aroute()`, which runs it in a thread, as `ToolRegistry.execute()` does for the tool gate. After a paid call, call
+`report_spend()`, which writes one `model_spend` event.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 import os
@@ -129,6 +134,12 @@ def route(step: Step, context: RouteContext) -> RouteDecision:
             return _decide(record, _local(f"{refusal}; falling back to the local model"))
 
     return _decide(record, RouteDecision(paid, PAID_PROVIDER, why))
+
+
+async def aroute(step: Step, context: RouteContext) -> RouteDecision:
+    """`route()` for async callers: same contract, run in a worker thread so the Warden's blocking socket call
+    (up to its timeout) never stalls the event loop. The current task scope is carried into the thread."""
+    return await asyncio.to_thread(route, step, context)
 
 
 def report_spend(decision: RouteDecision, actual_cost: float, step_id: str | None = None) -> guard.Decision | None:

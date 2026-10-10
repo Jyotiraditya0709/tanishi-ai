@@ -161,3 +161,23 @@ def test_no_spend_event_for_a_local_call_or_with_the_gate_off(gate_off):
     router.report_spend(router.RouteDecision(M.CLAUDE_SIMPLE, router.PAID_PROVIDER, "r"), 0.5)
     router.report_spend(router.RouteDecision(M.OLLAMA_DEFAULT, router.LOCAL_PROVIDER, "r"), 0.0)
     assert len(spend_events()) == before
+
+
+def test_aroute_gives_the_same_decision_and_keeps_the_task_scope(gate_off):
+    import asyncio
+
+    async def main():
+        with events.task_scope("task-a", "sess-a"):
+            return await router.aroute(Step("a", "hi"), ctx())
+
+    assert asyncio.run(main()) == router.route(Step("a", "hi"), ctx())
+    evs = list(events.iter_events(kind=router.EVENT_KIND))
+    assert evs[-2].payload["task_id"] == "task-a" and evs[-2].session_id == "sess-a"
+
+
+def test_aroute_raises_the_same_refusal(gate_off):
+    import asyncio
+
+    with pytest.raises(router.RouteRefused) as e:
+        asyncio.run(router.aroute(Step("a", "x"), ctx(needs_tools=True, personal=True)))
+    assert e.value.wait is False

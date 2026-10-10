@@ -46,7 +46,6 @@ def _events():
 # --- B1 · route() blocks the event loop on a slow Warden -------------------------------------------------------
 
 
-@BREAK
 def test_b1_route_has_an_async_entry_that_keeps_the_loop_alive(warden):
     """ToolRegistry.execute() runs the Warden check via asyncio.to_thread because a hung Warden (5 s timeout) must not
     freeze the runtime. route() does the same socket call synchronously, so an async caller freezes for the timeout.
