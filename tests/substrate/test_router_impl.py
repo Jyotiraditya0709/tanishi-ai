@@ -181,3 +181,10 @@ def test_aroute_raises_the_same_refusal(gate_off):
     with pytest.raises(router.RouteRefused) as e:
         asyncio.run(router.aroute(Step("a", "x"), ctx(needs_tools=True, personal=True)))
     assert e.value.wait is False
+
+
+def test_estimate_counts_utf8_bytes_and_survives_a_lone_surrogate(gate_off):
+    assert router.estimate_tokens("abcd" * 10) == 10
+    assert router.estimate_tokens("é" * 40) == 20  # two bytes each
+    assert router.estimate_tokens("\ud800" * 4) == 3
+    assert router.route(Step("a", "broken \ud800 text"), ctx()).model_id == M.CLAUDE_SIMPLE

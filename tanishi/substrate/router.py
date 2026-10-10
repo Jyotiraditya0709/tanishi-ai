@@ -82,8 +82,10 @@ class RouteRefused(RuntimeError):
 
 
 def estimate_tokens(text: str) -> int:
-    """About four characters per token, as in the legacy brain."""
-    return max(1, len(text) // 4)
+    """About four UTF-8 bytes per token. Bytes, not characters: CJK, emoji and accented text cost far more tokens
+    per character than ASCII, and a character count would undercount both the size and the spend estimate.
+    `surrogatepass` so a lone surrogate counts as its three bytes instead of raising."""
+    return max(1, len(text.encode("utf-8", "surrogatepass")) // 4)
 
 
 def estimate_cost(model_id: str, text: str) -> float:

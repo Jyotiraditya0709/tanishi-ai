@@ -88,7 +88,6 @@ def test_b2_only_a_real_false_switches_the_personal_rule_off(gate_off, flag):
 # --- B3 · the token estimate undercounts non-ASCII text, which skews both the size choice and the spend check ---
 
 
-@BREAK
 def test_b3_estimate_tokens_for_non_ascii_text():
     """len//4 assumes ASCII. CJK, emoji and accented text cost about one token per character or more, so a 4000
     character CJK step is 'estimated' at 1000 tokens: the Warden is asked about a quarter of the real input cost
@@ -96,7 +95,6 @@ def test_b3_estimate_tokens_for_non_ascii_text():
     assert router.estimate_tokens("字" * 4000) >= 2000
 
 
-@BREAK
 def test_b3_long_non_ascii_step_gets_the_complex_model(gate_off):
     n = routing.COMPLEXITY_THRESHOLD_TOKENS * 2  # 1000 chars of CJK ~ 1000+ tokens, twice the threshold
     d = router.route(Step("a", "字" * n), router.RouteContext())
