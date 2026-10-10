@@ -93,6 +93,25 @@ def test_cli_main_usage_and_unknown_task(capsys):
     assert "no trace" in capsys.readouterr().err
 
 
+def test_printable_escapes_c0_c1_and_line_separators_only():
+    assert trace.printable("a\nb\x1b[2J\x9b é") == "a\\nb\\x1b[2J\\x9b\\u2028é"
+
+
+def test_every_printed_field_is_escaped(capsys):
+    with events.task_scope("t-esc"), span("n\x07", model="m\x1b", tool_calls=["t\x85"], note="\x9b") as s:
+        s.set(tokens_in="1\n2")
+    assert trace.main(["t-esc"]) == 0
+    out = capsys.readouterr().out
+    assert len(out.splitlines()) == 2
+    assert not any(ch in out for ch in "\x07\x1b\x85\x9b")
+
+
+def test_tree_is_iterative_and_keeps_order():
+    rs = [{"span_id": str(i), "parent_id": str(i - 1) if i else None, "name": str(i)} for i in range(5000)]
+    got = trace.tree(rs)
+    assert [d for d, _ in got] == list(range(5000))
+
+
 def test_line_breaks_other_than_newline_are_escaped_on_disk():
     seps = "a b c\x85d"
     with span("sep", note=seps):

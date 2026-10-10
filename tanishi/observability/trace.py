@@ -295,7 +295,9 @@ def load(task_id: str) -> list[dict[str, Any]]:
                 rec = json.loads(line)
             except ValueError:
                 continue
-            if isinstance(rec, dict) and rec.get("task_id") == task_id:
+            # As strings: the CLI's argument is a str, but a caller may have passed task_id=42.
+            got = rec.get("task_id") if isinstance(rec, dict) else None
+            if got is not None and str(got) == str(task_id):
                 out.append(rec)
     return out
 
@@ -311,22 +313,35 @@ def tree(recs: list[dict[str, Any]]) -> list[tuple[int, dict[str, Any]]]:
         group.sort(key=lambda r: str(r.get("start_ts", "")))
     out: list[tuple[int, dict[str, Any]]] = []
     seen: set[Any] = set()
-
-    def walk(parent: Any, depth: int) -> None:
-        for r in kids.get(parent, []):
-            if id(r) in seen:
-                continue
-            seen.add(id(r))
-            out.append((depth, r))
-            if r.get("span_id") is not None:
-                walk(r["span_id"], depth + 1)
-
-    walk(None, 0)
+    stack = [(0, r) for r in reversed(kids.get(None, []))]  # explicit stack: any depth, no RecursionError
+    while stack:
+        depth, r = stack.pop()
+        if id(r) in seen:
+            continue
+        seen.add(id(r))
+        out.append((depth, r))
+        if r.get("span_id") is not None:
+            stack.extend((depth + 1, c) for c in reversed(kids.get(r["span_id"], [])))
     out.extend((0, r) for r in recs if id(r) not in seen)  # parent cycles: still show them
     return out
 
 
+# C0, DEL, C1 and the Unicode line and paragraph separators. Names, models and tool names can come from the model,
+# so none of these may reach the terminal raw: a newline would forge tree lines, ESC would drive the terminal.
+_UNPRINTABLE = {c: f"\\x{c:02x}" for c in (*range(0x20), *range(0x7F, 0xA0))}
+_UNPRINTABLE.update({ord("\n"): "\\n", ord("\r"): "\\r", ord("\t"): "\\t", 0x2028: "\\u2028", 0x2029: "\\u2029"})
+
+
+def printable(text: str) -> str:
+    """`text` with every control character written as an escape, so one record prints as one plain line."""
+    return text.translate(_UNPRINTABLE)
+
+
 def format_span(depth: int, r: dict[str, Any]) -> str:
+    return printable(_format_span(depth, r))
+
+
+def _format_span(depth: int, r: dict[str, Any]) -> str:
     parts = [f"{'  ' * depth}{r.get('name')}", f"{float(r.get('latency_ms') or 0):.1f} ms"]
     if r.get("status") == "error":
         parts.append(f"ERROR {r.get('error')}")
@@ -351,9 +366,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         recs = load(task_id)
         if not recs:
-            print(f"no trace for task {task_id}", file=sys.stderr)
+            print(f"no trace for task {printable(task_id)}", file=sys.stderr)
             return 1
-        print(f"task {task_id}: {len(recs)} spans")
+        print(f"task {printable(task_id)}: {len(recs)} spans")
         for depth, r in tree(recs):
             print(format_span(depth, r))
     except Exception as exc:  # noqa: BLE001 - a clean message, never a traceback

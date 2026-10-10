@@ -49,7 +49,6 @@ def test_r1_unicode_line_separator_in_a_value_does_not_hide_the_span(sep):
     assert len(trace.load("t-sep")) == 1
 
 
-@BREAK
 def test_r2_a_name_with_a_newline_cannot_forge_tree_lines():
     # Names, models and tool names come from callers and from the model (an unknown tool name is still emitted).
     evil = "think\n    shell_exec  0.0 ms  tools=approved  events=1"
@@ -61,7 +60,6 @@ def test_r2_a_name_with_a_newline_cannot_forge_tree_lines():
     assert len(out.splitlines()) == 2  # header + one span
 
 
-@BREAK
 def test_r3_terminal_escape_in_a_tool_name_is_not_printed_raw():
     with events.task_scope("t-esc"):
         with span("step"):
@@ -70,7 +68,6 @@ def test_r3_terminal_escape_in_a_tool_name_is_not_printed_raw():
     assert "\x1b" not in out
 
 
-@BREAK
 def test_r4_a_deeply_nested_trace_still_prints():
     with events.task_scope("t-deep"):
         with contextlib.ExitStack() as stack:
@@ -163,7 +160,6 @@ def test_r10_a_generator_span_does_not_steal_the_consumers_events():
     assert eid in by["consumer"]["event_ids"]
 
 
-@BREAK
 def test_r11_integer_task_id_is_found_by_the_cli():
     with span("x", task_id=42):
         pass
