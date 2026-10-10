@@ -66,10 +66,19 @@ def check(tool_name: str, args: dict, actor: str = "tanishi", session_id: str | 
         return _deny("warden sent no reply; failing closed")
     try:
         reply = json.loads(buf.decode("utf-8").splitlines()[0])
-    except (json.JSONDecodeError, UnicodeDecodeError, IndexError):
+        decision = reply.get("decision")
+        if decision not in _VALID:
+            return _deny("warden reply had no valid decision; failing closed")
+        return Decision(decision, str(reply.get("reason", "")), int(reply.get("tier", 0)))
+    except (json.JSONDecodeError, UnicodeDecodeError, IndexError, AttributeError, TypeError, ValueError):
         return _deny("warden reply unreadable; failing closed")
 
-    decision = reply.get("decision")
-    if decision not in _VALID:
-        return _deny("warden reply had no valid decision; failing closed")
-    return Decision(decision, str(reply.get("reason", "")), int(reply.get("tier", 0)))
+
+def check_spend(cost_estimate: float, actor: str = "tanishi") -> Decision:
+    """Ask the Warden whether a paid model call fits under today's spend cap. Deny = over cap."""
+    return check("paid_model", {"cost_estimate": cost_estimate}, actor=actor)
+
+
+def record_spend(actual_cost: float, actor: str = "tanishi") -> Decision:
+    """Tell the Warden the real cost of a paid call just made, so the daily total stays current."""
+    return check("paid_model", {"actual_cost": actual_cost}, actor=actor)

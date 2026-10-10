@@ -8,6 +8,10 @@
 version: 1
 default: deny
 
+# Daily cap on Tanishi's own paid model spend, in USD. The Warden denies the 'paid_model'
+# pseudo-tool once today's spend plus the next call's estimate would exceed this.
+daily_spend_cap_usd: 2.0
+
 tools:
   # --- read-only, safe ---
   read_file:        {decision: allow, tier: 0, reason: "read a file"}
@@ -23,6 +27,9 @@ tools:
   # --- writes to her own data: allowed ---
   log_expense:      {decision: allow, tier: 1}
   remember:         {decision: allow, tier: 1}
+
+  # --- paid model use: allowed until the daily spend cap is hit (handled specially) ---
+  paid_model:       {decision: allow, tier: 1, reason: "paid model call, under the daily cap"}
 
   # --- side effects on the world: ask the owner ---
   write_file:       {decision: ask, tier: 2, reason: "writing a file changes the disk"}

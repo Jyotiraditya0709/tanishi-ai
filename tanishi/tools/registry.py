@@ -182,7 +182,9 @@ class ToolRegistry:
         if _GUARD_ON:
             if session_id is None:
                 session_id = current_task()[1]
-            d = guard_check(tool_name, tool_input or {}, actor=actor, session_id=session_id)
+            # Off the event loop: a slow or hung Warden must not freeze the runtime (it times out and denies).
+            d = await asyncio.to_thread(guard_check, tool_name, tool_input or {},
+                                        actor=actor, session_id=session_id)
             if d.decision == "deny":
                 return ToolResult(success=False, output="", tool_name=tool_name,
                                   error=f"Warden denied {tool_name}: {d.reason}")

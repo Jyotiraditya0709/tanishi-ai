@@ -22,3 +22,33 @@ def test_no_warden_denies(monkeypatch, tmp_path):
     assert d.decision == "deny"
     assert not d.allowed
     assert "failing closed" in d.reason
+
+
+def test_malformed_reply_denies(monkeypatch):
+    """A reply that is valid JSON but the wrong shape must deny, never raise."""
+    import importlib
+    import socket
+    import tempfile
+    import threading
+    from pathlib import Path
+
+    for bad in (b"[1, 2]\n", b'{"decision": "allow", "tier": "high"}\n', b'"allow"\n'):
+        sock_path = Path(tempfile.mkdtemp(dir="/tmp")) / "w.sock"
+        srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        srv.bind(str(sock_path))
+        srv.listen(1)
+
+        def serve(server=srv, payload=bad):
+            conn, _ = server.accept()
+            conn.recv(4096)
+            conn.sendall(payload)
+            conn.close()
+
+        threading.Thread(target=serve, daemon=True).start()
+        monkeypatch.setenv("TANISHI_WARDEN_SOCK", str(sock_path))
+        import tanishi.guard.client as client
+        importlib.reload(client)
+        d = client.check("read_file", {"path": "/etc/hosts"})
+        assert d.decision == "deny", bad
+        assert "failing closed" in d.reason
+        srv.close()
