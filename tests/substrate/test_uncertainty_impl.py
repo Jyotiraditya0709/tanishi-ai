@@ -98,3 +98,88 @@ def test_agrees_with_cs5_calibration_bins():
     got = U.get_capability("eval").calibration_error
     assert got == pytest.approx(want, abs=1e-9)
     assert got > 0.1  # the bias shows up
+
+
+# ---------------------------------------------------------------- repair round (decision 0021)
+
+
+def _resolve_without_hook(monkeypatch, cap, confidence, outcome):
+    """A resolve in a process that never imported uncertainty: CS5 runs no hook."""
+    pid = P.predict("self:probe", {"success": True, "capability": cap}, confidence)
+    with monkeypatch.context() as m:
+        m.setattr(P, "_resolve_hooks", [])
+        P.resolve(pid, {"success": outcome})
+
+
+def test_read_through_picks_up_a_resolve_the_hook_never_saw(monkeypatch):
+    _resolve_without_hook(monkeypatch, "code", 0.9, False)
+    with _db() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM capabilities").fetchone()[0] == 0
+    r = U.get_capability("code")
+    assert r.calibration_error == pytest.approx(0.9) and r.evidence == 1
+    _resolve_without_hook(monkeypatch, "code", 0.9, True)
+    assert U.get_capability("code").evidence == 2
+
+
+def test_read_through_sees_evidence_older_than_a_row_someone_else_made(monkeypatch):
+    _resolve_without_hook(monkeypatch, "code", 0.95, False)
+    with _db() as conn, conn:
+        conn.execute("INSERT INTO capabilities (id, name, family, updated_at) VALUES ('code', 'Coding', 'craft', ?)",
+                     ("2999-01-01T00:00:00.000000+00:00",))
+    r = U.get_capability("code")
+    assert r.calibration_error == pytest.approx(0.95)
+    assert _cap_rows() == [("code", "Coding", "craft", None)]
+
+
+def test_a_cs5_resolve_updates_the_row_through_the_hook():
+    pid = P.predict("self:probe", {"success": True, "capability": "code"}, 0.8)
+    P.resolve(pid, {"success": False})
+    with _db() as conn:
+        assert conn.execute("SELECT calibration_error FROM capabilities WHERE id = 'code'").fetchone()[0] == \
+            pytest.approx(0.8)
+
+
+def test_a_raising_hook_never_breaks_cs5_resolve(monkeypatch, caplog):
+    def boom(*_):
+        raise RuntimeError("sk-" + "z" * 30)
+
+    pid = P.predict("self:probe", {"success": True}, 0.8)
+    with monkeypatch.context() as m, caplog.at_level(logging.WARNING):
+        m.setattr(P, "_resolve_hooks", [boom])
+        assert P.resolve(pid, {"success": False}) == pytest.approx(0.64)
+    assert "RuntimeError" in caplog.text and "zzzz" not in caplog.text
+
+
+def test_evidence_count_and_low_evidence_flag():
+    assert U.get_capability("code").evidence == 0 and U.get_capability("code").low_evidence
+    for i in range(U.MIN_EVIDENCE):
+        pid = P.predict("self:probe", {"success": True, "capability": "code"}, 0.9)
+        U.resolve_prediction(pid, {"success": True})
+        r = U.get_capability("code")
+        assert r.evidence == i + 1
+        assert r.low_evidence is (i + 1 < U.MIN_EVIDENCE)
+    assert r.ability == 1.0  # enough evidence: the plain rate
+
+
+def test_low_evidence_ability_is_laplace_and_count_survives_a_cold_cache():
+    for ok in (True, True, False):
+        pid = P.predict("self:probe", {"success": True, "capability": "code"}, 0.9)
+        U.resolve_prediction(pid, {"success": ok})
+    U._counts.clear()
+    r = U.get_capability("code")
+    assert r.ability == pytest.approx(3 / 5) and r.evidence == 3
+
+
+@pytest.mark.parametrize("tag", ["[REDACTED:openai]", "[REDACTED]", "sk-" + "q" * 30, "co\udc80de"])
+def test_a_tag_redaction_would_change_is_untagged(tag):
+    pid = P.predict("self:probe", {"success": True, "capability": tag}, 0.9)
+    U.resolve_prediction(pid, {"success": False})
+    assert _cap_rows() == []
+    assert U.get_capability("[REDACTED:openai]").evidence == 0
+
+
+def test_lone_surrogate_name_is_a_value_error():
+    for call in (U.get_capability, U.update_calibration):
+        with pytest.raises(ValueError) as e:
+            call("co\udc80de")
+        assert not isinstance(e.value, UnicodeError)

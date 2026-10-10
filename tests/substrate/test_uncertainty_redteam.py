@@ -69,7 +69,6 @@ def test_b5_ordinary_capability_names_survive_redaction(name):
     assert U.get_capability(name).calibration_error == pytest.approx(0.9)
 
 
-@pytest.mark.xfail(strict=True, reason="design: needs an evidence count column (a migration)")
 def test_b6_one_lucky_prediction_reads_as_perfect():
     """B6: a single resolved prediction at confidence 1.0 gives ability 1.0 and calibration_error 0.0: the read
     carries no evidence count, so the router cannot tell it from a thousand."""
