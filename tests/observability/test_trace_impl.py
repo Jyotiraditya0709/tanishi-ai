@@ -1,4 +1,6 @@
 """OBS1 implementer's tests: what the exam (test_trace.py) does not pin."""
+import asyncio
+import contextlib
 import json
 import os
 import threading
@@ -6,6 +8,8 @@ import threading
 from tanishi.core_state import events
 from tanishi.observability import trace
 from tanishi.observability.trace import span
+
+LS, PS, NEL = chr(0x2028), chr(0x2029), chr(0x85)  # chr(): raw separators in source are unreadable
 
 
 def recs() -> list[dict]:
@@ -93,8 +97,76 @@ def test_cli_main_usage_and_unknown_task(capsys):
     assert "no trace" in capsys.readouterr().err
 
 
+def test_a_contextmanager_wrapper_around_span_still_owns_its_body():
+    @contextlib.contextmanager
+    def traced(name):
+        with span(name) as s:
+            yield s
+
+    with traced("wrapped"), traced("wrapped-child"):
+        eid = events.emit("note", {})
+    assert one("wrapped-child")["event_ids"] == [eid]
+    assert one("wrapped-child")["parent_id"] == one("wrapped")["span_id"]
+
+
+def test_a_generator_span_owns_what_runs_inside_the_generator_only():
+    def stream():
+        with span("gen"):
+            yield events.emit("note", {"in": "gen"})
+            yield events.emit("note", {"in": "gen"})
+
+    with span("consumer"):
+        g = stream()
+        a = next(g)
+        with span("consumer-child"):
+            c = events.emit("note", {})
+        b = next(g)
+        g.close()
+    assert one("gen")["event_ids"] == [a, b]
+    assert one("consumer-child")["event_ids"] == [c]
+    assert one("consumer-child")["parent_id"] == one("consumer")["span_id"]
+
+
+def test_an_async_generator_span_does_not_take_the_consumers_events():
+    async def stream():
+        with span("agen"):
+            yield 1
+            yield 2
+
+    async def main():
+        with span("aconsumer"):
+            g = stream()
+            await g.__anext__()
+            eid = events.emit("note", {})
+            await g.aclose()
+        return eid
+
+    eid = asyncio.run(main())
+    assert one("aconsumer")["event_ids"] == [eid]
+    assert one("agen")["event_ids"] == []
+
+
+def test_the_span_a_task_starts_in_is_linked_to_the_task_but_not_its_parent():
+    with span("session"), span("think"), events.task_scope("t-root", "sess-1"), span("step"):
+        pass
+    assert (one("think")["task_id"], one("think")["session_id"]) == ("t-root", "sess-1")
+    assert one("session")["task_id"] is None
+    assert [r["name"] for _, r in trace.tree(trace.load("t-root"))] == ["think", "step"]
+
+
+def test_tools_count_once_per_report_but_repeats_are_kept():
+    with span("step", tool_calls=["search", "search", "read"]):
+        events.emit("tool_call", {"tool": "search", "call_id": "1"})
+        events.emit("tool_call", {"tool": "write", "call_id": "2"})
+    assert one("step")["tool_calls"] == ["search", "search", "read", "write"]
+    with span("step2", tool_calls=["search"]):
+        events.emit("tool_call", {"tool": "search", "call_id": "3"})
+        events.emit("tool_call", {"tool": "search", "call_id": "4"})
+    assert one("step2")["tool_calls"] == ["search", "search"]
+
+
 def test_printable_escapes_c0_c1_and_line_separators_only():
-    assert trace.printable("a\nb\x1b[2J\x9b é") == "a\\nb\\x1b[2J\\x9b\\u2028é"
+    assert trace.printable("a\nb\x1b[2J\x9b" + LS + "é") == "a\\nb\\x1b[2J\\x9b\\u2028é"
 
 
 def test_every_printed_field_is_escaped(capsys):
@@ -113,11 +185,11 @@ def test_tree_is_iterative_and_keeps_order():
 
 
 def test_line_breaks_other_than_newline_are_escaped_on_disk():
-    seps = "a b c\x85d"
+    seps = f"a{LS}b{PS}c{NEL}d"
     with span("sep", note=seps):
         pass
     raw = "".join(f.read_text(encoding="utf-8") for f in trace.traces_dir().glob("*.jsonl"))
-    assert not any(ch in raw for ch in (" ", " ", "\x85"))
+    assert not any(ch in raw for ch in (LS, PS, NEL))
     assert one("sep")["attrs"]["note"] == seps
 
 

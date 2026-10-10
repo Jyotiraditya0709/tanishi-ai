@@ -15,6 +15,7 @@ the event log's ``redact()`` and clipped before they reach disk.
 """
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import math
@@ -22,11 +23,13 @@ import os
 import sys
 import time
 import uuid
+from collections import Counter
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from pathlib import Path
+from types import FrameType
 from typing import Any
 
 from tanishi.core_state import events
@@ -40,7 +43,7 @@ MAX_DEPTH = 8  # deeper containers in attrs become a marker
 MAX_ITEMS = 200  # longest list kept in a record (event ids, tool calls, attrs)
 MAX_RECORD_BYTES = 64 * 1024  # one serialised record; over it, attrs are dropped and the record is marked
 _KNOWN = ("model", "tokens_in", "tokens_out", "tool_calls")
-_LINE_BREAKS = (" ", " ", "\x85")  # str.splitlines() breaks on these; json.dumps leaves them raw
+_LINE_BREAKS = (chr(0x2028), chr(0x2029), chr(0x85))  # str.splitlines() breaks on these; json.dumps keeps them
 
 _current: ContextVar[Span | None] = ContextVar("tanishi_current_span", default=None)
 _warned = False
@@ -49,10 +52,12 @@ _warned = False
 class Span:
     """One open span. ``set(**attrs)`` adds or replaces attributes before the span is written."""
 
-    def __init__(self, name: Any, attrs: dict[str, Any], parent: Span | None) -> None:
+    def __init__(self, name: Any, attrs: dict[str, Any], parent: Span | None, holder: FrameType | None) -> None:
         self.name = name
         self.attrs = dict(attrs)
         self.parent = parent
+        self.holder = holder  # the generator frame the span is open in, if any (see _holder)
+        self.closed = False
         self.span_id = uuid.uuid4().hex[:16]
         self.event_ids: list[int] = []
         self.event_tools: list[str] = []
@@ -68,10 +73,19 @@ class Span:
             _warn(exc)
 
 
-@contextmanager
-def span(name: str, /, **attrs: Any) -> Iterator[Span]:
+def span(name: str, /, **attrs: Any) -> AbstractContextManager[Span]:
     """Trace the block as one span; see the module docstring. Never raises on its own account."""
-    s = _open(name, attrs)
+    try:
+        holder = _holder(sys._getframe(1))
+    except Exception as exc:  # noqa: BLE001 - tracing fails open
+        _warn(exc)
+        holder = None
+    return _span(name, attrs, holder)
+
+
+@contextmanager
+def _span(name: Any, attrs: dict[str, Any], holder: FrameType | None) -> Iterator[Span]:
+    s = _open(name, attrs, holder)
     token = _current.set(s)
     try:
         yield s
@@ -87,9 +101,13 @@ def span(name: str, /, **attrs: Any) -> Iterator[Span]:
             _current.set(s.parent)
 
 
-def _open(name: Any, attrs: dict[str, Any]) -> Span:
-    parent = _current.get()
-    s = Span(name, attrs, parent)
+def _open(name: Any, attrs: dict[str, Any], holder: FrameType | None) -> Span:
+    try:
+        parent = _innermost()
+    except Exception as exc:  # noqa: BLE001 - tracing fails open
+        _warn(exc)
+        parent = _current.get()
+    s = Span(name, attrs, parent, holder)
     try:
         s.task_id, s.session_id = events.current_task()
     except Exception as exc:  # noqa: BLE001 - tracing fails open
@@ -98,10 +116,51 @@ def _open(name: Any, attrs: dict[str, Any]) -> Span:
             s.task_id, s.session_id = parent.task_id, parent.session_id
     if "task_id" in s.attrs:
         s.task_id = s.attrs.pop("task_id")
+    if s.task_id is not None and parent is not None and parent.task_id is None:
+        # A task started inside an open span (a wrapper around think()): that span is the task's root. It is
+        # written after its children, so it still gets the id. A span around several tasks goes to the first.
+        parent.task_id, parent.session_id = s.task_id, s.session_id
+    return s
+
+
+# A generator driven by contextlib (a @contextmanager wrapper around span()) runs its with-block in the frame that
+# entered it, so it does not hold a span across a yield. Any other generator or async generator does.
+_GENERATOR_FLAGS = inspect.CO_GENERATOR | inspect.CO_ASYNC_GENERATOR
+
+
+def _holder(frame: FrameType | None) -> FrameType | None:
+    """The generator frame a span opened from `frame` stays open in across yields, or None for a plain frame."""
+    while frame is not None and frame.f_code.co_flags & _GENERATOR_FLAGS:
+        back = frame.f_back
+        if back is None or back.f_globals.get("__name__") != "contextlib":
+            return frame
+        while back is not None and back.f_globals.get("__name__") == "contextlib":
+            back = back.f_back
+        frame = back  # a contextlib wrapper: the span belongs to whoever entered it
+    return None
+
+
+def _innermost() -> Span | None:
+    """The span that owns what happens now: the current one, skipping spans already closed and spans held open
+    by a generator that is suspended at a yield (its consumer's events and child spans are the consumer's)."""
+    s = _current.get()
+    running: set[int] | None = None
+    while s is not None and (s.closed or s.holder is not None):
+        if not s.closed:
+            if running is None:
+                running = set()
+                f: FrameType | None = sys._getframe(1)
+                while f is not None:
+                    running.add(id(f))
+                    f = f.f_back
+            if id(s.holder) in running:
+                return s
+        s = s.parent
     return s
 
 
 def _close(s: Span, exc: BaseException | None) -> None:
+    s.closed, s.holder = True, None  # drop the frame: it holds this span in its locals
     latency_ms = (time.perf_counter() - s.t0) * 1000.0
     try:
         _write(_record(s, latency_ms, exc))
@@ -115,8 +174,8 @@ def _close(s: Span, exc: BaseException | None) -> None:
 
 
 def _on_event(id_: int, kind: str, payload: Any) -> None:
-    """events listener: the innermost open span in this context owns the event."""
-    s = _current.get()
+    """events listener: the innermost open span in this context owns the event (see _innermost)."""
+    s = _innermost()
     if s is None:
         return
     s.event_ids.append(id_)
@@ -140,12 +199,19 @@ def _record(s: Span, latency_ms: float, exc: BaseException | None) -> dict[str, 
         tools = list(given)
     else:
         tools = [given]
+    # A tool both the caller passed and the registry's tool_call event reported counts once.
+    left = Counter(t for t in tools if isinstance(t, str))
+    for t in s.event_tools:
+        if left[t] > 0:
+            left[t] -= 1
+        else:
+            tools.append(t)
     rec = _bare(s, latency_ms, exc)
     rec.update(
         model=_safe(known["model"], 2),
         tokens_in=_safe(known["tokens_in"], 2),
         tokens_out=_safe(known["tokens_out"], 2),
-        tool_calls=_safe(tools + s.event_tools, 2),
+        tool_calls=_safe(tools, 2),
         # One attr json.dumps rejects becomes a placeholder; the others stay.
         attrs={_clip(str(k)): _safe(v, 3) for k, v in list(attrs.items())[:MAX_ITEMS]},
     )

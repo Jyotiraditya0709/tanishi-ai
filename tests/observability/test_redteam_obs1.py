@@ -133,7 +133,6 @@ def test_r8_event_id_list_truncation_is_visible():
 # ---------------------------------------------------------------- attribution
 
 
-@BREAK
 def test_r9_span_opened_before_task_scope_is_found_by_its_task():
     with span("outer"):
         with events.task_scope("t-late"):
@@ -143,7 +142,6 @@ def test_r9_span_opened_before_task_scope_is_found_by_its_task():
     assert "outer" in names  # the root of the task is invisible today (task_id null)
 
 
-@BREAK
 def test_r10_a_generator_span_does_not_steal_the_consumers_events():
     def stream():
         with span("model_call"):
@@ -167,7 +165,6 @@ def test_r11_integer_task_id_is_found_by_the_cli():
     assert code == 0
 
 
-@BREAK
 def test_r12_tool_is_counted_once_when_caller_and_registry_both_report_it():
     with events.task_scope("t-dup"):
         with span("step", tool_calls=["search"]):
