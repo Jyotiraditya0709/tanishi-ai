@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 _GUARD_ON = os.environ.get("TANISHI_GUARD", "").strip().lower() in ("1", "true", "on", "yes")
 
 EVENT_KIND = "model_route"
+SPEND_EVENT_KIND = "model_spend"
 LOCAL_PROVIDER = "local"  # served by Ollama; the name avoids looking like a model id
 PAID_PROVIDER = "anthropic"
 
@@ -130,14 +131,31 @@ def route(step: Step, context: RouteContext) -> RouteDecision:
     return _decide(record, RouteDecision(paid, PAID_PROVIDER, why))
 
 
-def report_spend(decision: RouteDecision, actual_cost: float) -> guard.Decision | None:
-    """After a paid call, tell the Warden what it really cost. Does nothing for a local call or with the gate off."""
+def report_spend(decision: RouteDecision, actual_cost: float, step_id: str | None = None) -> guard.Decision | None:
+    """After a paid call, tell the Warden what it really cost. Does nothing for a local call or with the gate off.
+
+    Every report is one `model_spend` event (ids and the amount, never step text). The guard client fails closed by
+    returning deny, not by raising, so a report the Warden did not take is logged as a warning and the event says
+    `recorded: false`: an undercounted day stays visible. A Warden that raises is handled the same way.
+    """
     if isinstance(actual_cost, bool) or not isinstance(actual_cost, int | float) or not math.isfinite(actual_cost) \
             or actual_cost < 0:
         raise ValueError("actual_cost must be a finite number >= 0")
     if not _GUARD_ON or decision.provider != PAID_PROVIDER:
         return None
-    return guard.record_spend(float(actual_cost))
+    cost = float(actual_cost)
+    try:
+        answer = guard.record_spend(cost)
+    except Exception as e:  # noqa: BLE001 - the call is already paid for; record the loss, do not lose the result
+        answer = guard.Decision("deny", f"warden error ({type(e).__name__}); spend not recorded")
+    if not answer.allowed:
+        logger.warning("spend report of %.6f USD for %s not recorded by the Warden (%s): the daily total undercounts",
+                       cost, decision.model_id, answer.decision)
+    task_id, session_id = events.current_task()
+    events.emit(SPEND_EVENT_KIND, {"model_id": decision.model_id, "provider": decision.provider, "actual_cost": cost,
+                                   "recorded": answer.allowed, "warden": answer.decision, "warden_reason": answer.reason,
+                                   "step_id": step_id, "task_id": task_id}, actor="router", session_id=session_id)
+    return answer
 
 
 def _ask_spend(estimate: float) -> tuple[bool, str]:

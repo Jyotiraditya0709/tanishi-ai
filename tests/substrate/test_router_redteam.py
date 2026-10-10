@@ -107,7 +107,6 @@ def test_b3_long_non_ascii_step_gets_the_complex_model(gate_off):
 # --- B4 · the actual spend report is not in the log and a failed report is silent ------------------------------
 
 
-@BREAK
 def test_b4_report_spend_leaves_a_trace(warden):
     """record_spend is the only thing that keeps the Warden's daily total honest. When it is denied (Warden down: the
     client fails closed and returns deny, it does not raise) report_spend returns the Decision and nothing else: no

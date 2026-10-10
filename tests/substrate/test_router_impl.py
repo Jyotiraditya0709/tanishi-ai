@@ -116,3 +116,48 @@ def test_report_spend_sends_the_actual_cost(warden):
     calls, _ = warden
     router.report_spend(router.RouteDecision(M.CLAUDE_SIMPLE, router.PAID_PROVIDER, "r"), 2)
     assert calls == [{"actual_cost": 2.0}]
+
+
+def spend_events():
+    return list(events.iter_events(kind=router.SPEND_EVENT_KIND))
+
+
+def test_a_truthy_odd_rule_value_keeps_the_rule_on_and_the_event_says_so(gate_off):
+    d = router.route(Step("a", "x"), ctx(personal=True, personal_local_only="no"))
+    assert d.model_id == M.OLLAMA_DEFAULT
+    assert last_event().payload["personal_local_only"] is True
+
+
+def test_a_recorded_spend_report_is_an_event(warden):
+    router.report_spend(router.RouteDecision(M.CLAUDE_SIMPLE, router.PAID_PROVIDER, "r"), 0.25, step_id="s-9")
+    ev = spend_events()[-1]
+    assert ev.actor == "router"
+    assert ev.payload["actual_cost"] == 0.25 and ev.payload["recorded"] is True
+    assert ev.payload["model_id"] == M.CLAUDE_SIMPLE and ev.payload["step_id"] == "s-9"
+
+
+def test_a_spend_report_the_warden_did_not_take_warns_and_says_not_recorded(warden, caplog):
+    _, state = warden
+    state["answer"] = "deny"
+    with caplog.at_level("WARNING", logger=router.__name__):
+        answer = router.report_spend(router.RouteDecision(M.CLAUDE_SIMPLE, router.PAID_PROVIDER, "r"), 0.5)
+    assert answer.decision == "deny"
+    assert spend_events()[-1].payload["recorded"] is False
+    assert any("not recorded" in r.message for r in caplog.records)
+
+
+def test_a_warden_that_raises_on_report_is_not_recorded(warden, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("socket gone")
+
+    monkeypatch.setattr(client, "check", boom)
+    answer = router.report_spend(router.RouteDecision(M.CLAUDE_SIMPLE, router.PAID_PROVIDER, "r"), 0.5)
+    assert answer.allowed is False
+    assert spend_events()[-1].payload["recorded"] is False
+
+
+def test_no_spend_event_for_a_local_call_or_with_the_gate_off(gate_off):
+    before = len(spend_events())
+    router.report_spend(router.RouteDecision(M.CLAUDE_SIMPLE, router.PAID_PROVIDER, "r"), 0.5)
+    router.report_spend(router.RouteDecision(M.OLLAMA_DEFAULT, router.LOCAL_PROVIDER, "r"), 0.0)
+    assert len(spend_events()) == before
