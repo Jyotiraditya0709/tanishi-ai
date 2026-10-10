@@ -6,8 +6,6 @@ exam; this is the minimal fail-closed proof to keep with the guard).
 
 from __future__ import annotations
 
-from tanishi.guard import check
-
 
 def test_no_warden_denies(monkeypatch, tmp_path):
     # Point the client at a socket that does not exist.
@@ -15,7 +13,7 @@ def test_no_warden_denies(monkeypatch, tmp_path):
     # Re-import so the module picks up the env (or set the attr directly if already imported).
     import importlib
 
-    import tanishi.guard.client as client
+    from tanishi.guard import client
     importlib.reload(client)
 
     d = client.check("read_file", {"path": "/etc/hosts"}, actor="tanishi")
@@ -46,7 +44,7 @@ def test_malformed_reply_denies(monkeypatch):
 
         threading.Thread(target=serve, daemon=True).start()
         monkeypatch.setenv("TANISHI_WARDEN_SOCK", str(sock_path))
-        import tanishi.guard.client as client
+        from tanishi.guard import client
         importlib.reload(client)
         d = client.check("read_file", {"path": "/etc/hosts"})
         assert d.decision == "deny", bad
