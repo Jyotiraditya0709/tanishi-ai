@@ -5,7 +5,7 @@
 <h1 align="center">Tanishi</h1>
 
 <p align="center">
-  <b>A personal intelligence that expands her own capability space,<br/>and is being built by Claude.</b>
+  <b>A personal intelligence that expands her own capability space.</b>
 </p>
 
 <p align="center">
