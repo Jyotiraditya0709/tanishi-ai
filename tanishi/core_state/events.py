@@ -20,7 +20,7 @@ import os
 import re
 import sqlite3
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -189,6 +189,31 @@ def _open() -> sqlite3.Connection:
     return conn
 
 
+# Observers of committed events (OBS1 traces use one to link a span to the events it produced). Each is
+# called after the commit, in the emitting thread and context, with (id, kind, payload as the caller gave
+# it, not redacted). A listener that raises is logged and ignored: it can never fail or undo an emit.
+_listeners: list[Callable[[int, str, Any], None]] = []
+
+
+def add_listener(fn: Callable[[int, str, Any], None]) -> None:
+    """Call `fn(id, kind, payload)` after every successful emit(). Adding the same function twice is a no-op."""
+    if fn not in _listeners:
+        _listeners.append(fn)
+
+
+def remove_listener(fn: Callable[[int, str, Any], None]) -> None:
+    if fn in _listeners:
+        _listeners.remove(fn)
+
+
+def _notify(id_: int, kind: str, payload: Any) -> None:
+    for fn in tuple(_listeners):  # a copy: a listener may remove itself
+        try:
+            fn(id_, kind, payload)
+        except Exception as exc:  # noqa: BLE001 - a listener can never fail an emit that already committed
+            logger.warning("event listener failed: %s", type(exc).__name__)
+
+
 def emit(kind: str, payload: dict, actor: str = "tanishi", session_id: str | None = None) -> int:
     """Append one event to the Core State log and return its id.
 
@@ -203,10 +228,12 @@ def emit(kind: str, payload: dict, actor: str = "tanishi", session_id: str | Non
     if session_id is not None and not isinstance(session_id, str):
         raise TypeError("session_id must be a str or None")
     try:
-        return _append(kind, payload, actor, session_id)
+        id_ = _append(kind, payload, actor, session_id)
     except Exception:
         _note_gap(kind)
         raise
+    _notify(id_, kind, payload)
+    return id_
 
 
 def _append(kind: str, payload: Any, actor: str, session_id: str | None) -> int:
