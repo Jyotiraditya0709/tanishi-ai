@@ -102,6 +102,44 @@ def test_line_breaks_other_than_newline_are_escaped_on_disk():
     assert one("sep")["attrs"]["note"] == seps
 
 
+def test_one_bad_attr_becomes_a_placeholder_and_the_rest_stays():
+    with span("mixed", huge=10**5000, fine="kept"):
+        pass
+    attrs = one("mixed")["attrs"]
+    assert attrs["fine"] == "kept"
+    assert attrs["huge"] == "[UNSERIALISABLE: int]"
+
+
+def test_a_record_that_cannot_be_built_is_still_written_bare(monkeypatch):
+    monkeypatch.setattr(trace, "_record", lambda *a: (_ for _ in ()).throw(RuntimeError()))
+    with span("bare", a=1):
+        eid = events.emit("note", {})
+    r = one("bare")
+    assert r["event_ids"] == [eid] and r["attrs"] == {} and r["status"] == "ok"
+
+
+def test_an_oversized_record_drops_attrs_and_says_so():
+    with span("fat", payload=["x" * 1500] * 150, keep="no"):
+        pass
+    r = one("fat")
+    assert r["attrs"] == {}
+    assert r["truncated"]["dropped"] == ["attrs"] and r["truncated"]["bytes"] > trace.MAX_RECORD_BYTES
+    assert one("fat")["name"] == "fat"
+
+
+def test_event_count_and_truncation_are_recorded():
+    with span("few"):
+        events.emit("note", {})
+    r = one("few")
+    assert (r["event_count"], r["events_truncated"], r["truncated"]) == (1, 0, None)
+    with span("many"):
+        for _ in range(trace.MAX_ITEMS + 5):
+            events.emit("note", {})
+    r = one("many")
+    assert len(r["event_ids"]) == trace.MAX_ITEMS
+    assert (r["event_count"], r["events_truncated"]) == (trace.MAX_ITEMS + 5, 5)
+
+
 def test_write_finishes_a_line_over_many_short_writes(monkeypatch):
     real = os.write
     monkeypatch.setattr(os, "write", lambda fd, data: real(fd, bytes(data[:7])))

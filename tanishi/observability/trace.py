@@ -38,6 +38,7 @@ TRACES_DIR = "traces"  # under $TANISHI_HOME
 MAX_CHARS = 2000  # every string in a record is clipped to this, after redaction
 MAX_DEPTH = 8  # deeper containers in attrs become a marker
 MAX_ITEMS = 200  # longest list kept in a record (event ids, tool calls, attrs)
+MAX_RECORD_BYTES = 64 * 1024  # one serialised record; over it, attrs are dropped and the record is marked
 _KNOWN = ("model", "tokens_in", "tokens_out", "tool_calls")
 _LINE_BREAKS = (" ", " ", "\x85")  # str.splitlines() breaks on these; json.dumps leaves them raw
 
@@ -101,9 +102,14 @@ def _open(name: Any, attrs: dict[str, Any]) -> Span:
 
 
 def _close(s: Span, exc: BaseException | None) -> None:
+    latency_ms = (time.perf_counter() - s.t0) * 1000.0
     try:
-        latency_ms = (time.perf_counter() - s.t0) * 1000.0
         _write(_record(s, latency_ms, exc))
+        return
+    except Exception as err:  # noqa: BLE001 - tracing fails open
+        _warn(err)
+    try:  # once more without attrs, so ids, latency, status and event links survive
+        _write(_bare(s, latency_ms, exc))
     except Exception as err:  # noqa: BLE001 - tracing fails open
         _warn(err)
 
@@ -134,24 +140,51 @@ def _record(s: Span, latency_ms: float, exc: BaseException | None) -> dict[str, 
         tools = list(given)
     else:
         tools = [given]
-    rec = {
+    rec = _bare(s, latency_ms, exc)
+    rec.update(
+        model=_safe(known["model"], 2),
+        tokens_in=_safe(known["tokens_in"], 2),
+        tokens_out=_safe(known["tokens_out"], 2),
+        tool_calls=_safe(tools + s.event_tools, 2),
+        # One attr json.dumps rejects becomes a placeholder; the others stay.
+        attrs={_clip(str(k)): _safe(v, 3) for k, v in list(attrs.items())[:MAX_ITEMS]},
+    )
+    return events.redact(rec)
+
+
+def _bare(s: Span, latency_ms: float, exc: BaseException | None) -> dict[str, Any]:
+    """The record without caller attrs: what is still written when the full record cannot be."""
+    n = len(s.event_ids)
+    return {
         "span_id": s.span_id,
         "parent_id": s.parent.span_id if s.parent is not None else None,
-        "task_id": s.task_id,
-        "session_id": s.session_id,
-        "name": s.name,
+        "task_id": _safe(s.task_id, 2),
+        "session_id": _safe(s.session_id, 2),
+        "name": _safe(s.name, 2),
         "start_ts": s.start_ts,
         "latency_ms": round(latency_ms, 3),
         "status": "ok" if exc is None else "error",
         "error": None if exc is None else type(exc).__name__,
-        "model": known["model"],
-        "tokens_in": known["tokens_in"],
-        "tokens_out": known["tokens_out"],
-        "tool_calls": tools + s.event_tools,
-        "event_ids": list(s.event_ids),
-        "attrs": attrs,
+        "model": None,
+        "tokens_in": None,
+        "tokens_out": None,
+        "tool_calls": [],
+        "event_ids": s.event_ids[:MAX_ITEMS],
+        "event_count": n,  # all ids linked inside the span; event_ids keeps the first MAX_ITEMS
+        "events_truncated": max(0, n - MAX_ITEMS),
+        "attrs": {},
+        "truncated": None,  # set when the record was over MAX_RECORD_BYTES, see _encode
     }
-    return events.redact(_plain(rec, 1))
+
+
+def _safe(v: Any, depth: int) -> Any:
+    """`_plain(v)`, or a placeholder string when the result would still not serialise (an int past 4300 digits)."""
+    try:
+        p = _plain(v, depth)
+        json.dumps(p, allow_nan=False)
+        return p
+    except Exception:  # noqa: BLE001 - one bad value must not cost the span
+        return f"[UNSERIALISABLE: {_clip(type(v).__name__)}]"
 
 
 def _plain(v: Any, depth: int) -> Any:
@@ -186,7 +219,7 @@ def traces_dir() -> Path:
 
 
 def _write(rec: dict[str, Any]) -> None:
-    data = _line(rec).encode("utf-8", errors="replace")
+    data = _encode(rec)
     d = traces_dir()
     d.mkdir(mode=0o700, parents=True, exist_ok=True)
     path = d / f"{datetime.now(UTC).date().isoformat()}.jsonl"
@@ -202,6 +235,24 @@ def _write(rec: dict[str, Any]) -> None:
             view = view[n:]
     finally:
         os.close(fd)
+
+
+def _encode(rec: dict[str, Any]) -> bytes:
+    """The record as one UTF-8 line of at most MAX_RECORD_BYTES: over it, attrs and then tool calls are dropped,
+    and ``truncated`` says what went and how big the record was."""
+    data = _line(rec).encode("utf-8", errors="replace")
+    if len(data) <= MAX_RECORD_BYTES:
+        return data
+    size, dropped = len(data), []
+    for key, empty in (("attrs", {}), ("tool_calls", [])):
+        rec = {**rec, key: empty, "truncated": {"bytes": size, "limit": MAX_RECORD_BYTES, "dropped": [*dropped, key]}}
+        dropped.append(key)
+        data = _line(rec).encode("utf-8", errors="replace")
+        if len(data) <= MAX_RECORD_BYTES:
+            break
+    # What is left (ids, name, model, task and session ids, each clipped to MAX_CHARS) is normally a few KB; only a
+    # container passed as task_id could still push it over, and that line is written as is.
+    return data
 
 
 def _line(rec: dict[str, Any]) -> str:

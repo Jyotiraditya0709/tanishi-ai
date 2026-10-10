@@ -105,7 +105,6 @@ def test_r5_a_short_write_does_not_glue_two_records(monkeypatch):
     assert "second" in names  # today the half line swallows the next record too
 
 
-@BREAK
 def test_r6_one_unserialisable_attr_does_not_drop_the_span_and_its_event_links():
     with events.task_scope("t-big"):
         with span("work", huge=10**5000) as s:  # json.dumps: int exceeds 4300 digits -> ValueError
@@ -116,7 +115,6 @@ def test_r6_one_unserialisable_attr_does_not_drop_the_span_and_its_event_links()
     assert eid in got[0]["event_ids"]
 
 
-@BREAK
 def test_r7_a_record_is_size_bounded():
     big = [[list(range(200)) for _ in range(200)] for _ in range(20)]  # 800k ints, within every per-container cap
     with events.task_scope("t-size"):
@@ -125,7 +123,6 @@ def test_r7_a_record_is_size_bounded():
     assert sum(len(x) for x in raw_lines()) < 1_000_000
 
 
-@BREAK
 def test_r8_event_id_list_truncation_is_visible():
     with events.task_scope("t-many"):
         with span("busy"):
