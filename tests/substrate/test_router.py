@@ -75,8 +75,7 @@ class Warden:
 
 
 def _install_warden(monkeypatch, router, on: bool) -> Warden:
-    from tanishi.guard import client
-    from tanishi.guard import Decision
+    from tanishi.guard import Decision, client
     from tanishi.tools import registry
 
     w = Warden()
