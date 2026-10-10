@@ -251,7 +251,7 @@ def test_service_object_exposes_no_task_accessors(fx, store):
     svc = _service(store, fx.good)
     svc.evaluate("cand-a")
     _assert_clean(repr(svc), *ALL_CANARIES)
-    banned = re.compile(r"task|prompt|verifier|source|answer|expected", re.I)
+    banned = re.compile(r"task|prompt|verifier|source|answer|expected", re.IGNORECASE)
     public = [n for n in dir(svc) if not n.startswith("_")]
     assert [n for n in public if banned.search(n)] == [], "the public surface must not hand out task material"
     for name in public:
