@@ -1,5 +1,6 @@
 """OBS1 implementer's tests: what the exam (test_trace.py) does not pin."""
 import json
+import os
 import threading
 
 from tanishi.core_state import events
@@ -90,3 +91,21 @@ def test_cli_main_usage_and_unknown_task(capsys):
     assert trace.main([]) == 2
     assert trace.main(["nope"]) == 1
     assert "no trace" in capsys.readouterr().err
+
+
+def test_line_breaks_other_than_newline_are_escaped_on_disk():
+    seps = "a b c\x85d"
+    with span("sep", note=seps):
+        pass
+    raw = "".join(f.read_text(encoding="utf-8") for f in trace.traces_dir().glob("*.jsonl"))
+    assert not any(ch in raw for ch in (" ", " ", "\x85"))
+    assert one("sep")["attrs"]["note"] == seps
+
+
+def test_write_finishes_a_line_over_many_short_writes(monkeypatch):
+    real = os.write
+    monkeypatch.setattr(os, "write", lambda fd, data: real(fd, bytes(data[:7])))
+    with span("dribble", k="v" * 50):
+        pass
+    monkeypatch.undo()
+    assert one("dribble")["attrs"]["k"] == "v" * 50

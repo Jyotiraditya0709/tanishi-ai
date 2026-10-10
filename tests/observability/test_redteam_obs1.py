@@ -40,7 +40,6 @@ def cli(task_id: str) -> tuple[int, str]:
 # ---------------------------------------------------------------- reading
 
 
-@BREAK
 @pytest.mark.parametrize("sep", [" ", " ", "\x85"])
 def test_r1_unicode_line_separator_in_a_value_does_not_hide_the_span(sep):
     # json.dumps(ensure_ascii=False) leaves U+2028/U+2029/U+0085 raw; str.splitlines() cuts the record there.
@@ -85,7 +84,6 @@ def test_r4_a_deeply_nested_trace_still_prints():
 # ---------------------------------------------------------------- writing
 
 
-@BREAK
 def test_r5_a_short_write_does_not_glue_two_records(monkeypatch):
     real = os.write
     calls = {"n": 0}

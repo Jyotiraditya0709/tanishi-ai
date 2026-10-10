@@ -39,6 +39,7 @@ MAX_CHARS = 2000  # every string in a record is clipped to this, after redaction
 MAX_DEPTH = 8  # deeper containers in attrs become a marker
 MAX_ITEMS = 200  # longest list kept in a record (event ids, tool calls, attrs)
 _KNOWN = ("model", "tokens_in", "tokens_out", "tool_calls")
+_LINE_BREAKS = (" ", " ", "\x85")  # str.splitlines() breaks on these; json.dumps leaves them raw
 
 _current: ContextVar[Span | None] = ContextVar("tanishi_current_span", default=None)
 _warned = False
@@ -185,16 +186,30 @@ def traces_dir() -> Path:
 
 
 def _write(rec: dict[str, Any]) -> None:
-    line = json.dumps(rec, ensure_ascii=False, allow_nan=False, separators=(",", ":")) + "\n"
+    data = _line(rec).encode("utf-8", errors="replace")
     d = traces_dir()
     d.mkdir(mode=0o700, parents=True, exist_ok=True)
     path = d / f"{datetime.now(UTC).date().isoformat()}.jsonl"
-    # One write() per line on an O_APPEND fd, so concurrent writers do not interleave within a line.
+    # One O_APPEND fd per line, so concurrent writers do not interleave within a line in the usual case (one
+    # write() call). A short write (disk full, signal) is finished with more calls, never left without its "\n".
     fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
     try:
-        os.write(fd, line.encode("utf-8", errors="replace"))
+        view = memoryview(data)
+        while view:
+            n = os.write(fd, view)
+            if n <= 0:
+                raise OSError("trace write made no progress")
+            view = view[n:]
     finally:
         os.close(fd)
+
+
+def _line(rec: dict[str, Any]) -> str:
+    """One JSON line. U+2028, U+2029 and U+0085 are escaped too, so readers that use splitlines() stay safe."""
+    text = json.dumps(rec, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+    for ch in _LINE_BREAKS:  # outside "\n" these occur only inside JSON strings, where \uXXXX is valid
+        text = text.replace(ch, f"\\u{ord(ch):04x}")
+    return text + "\n"
 
 
 def _warn(exc: BaseException) -> None:
@@ -220,7 +235,8 @@ def load(task_id: str) -> list[dict[str, Any]]:
         return out
     for f in sorted(d.glob("*.jsonl")):
         try:
-            lines = f.read_text(encoding="utf-8", errors="replace").splitlines()
+            # "\n" only: splitlines() would also cut at U+2028, U+2029 and U+0085 inside a value.
+            lines = f.read_text(encoding="utf-8", errors="replace").split("\n")
         except OSError:
             continue
         for line in lines:
