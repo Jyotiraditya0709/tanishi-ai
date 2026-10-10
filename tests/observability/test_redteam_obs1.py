@@ -1,3 +1,4 @@
+# ruff: noqa: SIM117  (nested with-blocks keep the task scope and the span visibly separate)
 """Red-team attacks on OBS1 traces. See build/memory/runs/redteam-OBS1-20261010.md.
 
 Each test asserts the CORRECT behaviour. A test for an open break is marked xfail(strict=True): the suite stays
