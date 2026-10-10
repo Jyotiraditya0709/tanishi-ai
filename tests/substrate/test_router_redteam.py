@@ -123,7 +123,6 @@ def test_b4_report_spend_leaves_a_trace(warden):
 # --- B5 · routing config mutated at runtime is ignored ---------------------------------------------------------
 
 
-@BREAK
 def test_b5_complexity_threshold_is_read_at_call_time(gate_off, monkeypatch):
     """tanishi/config/routing.py says 'Mutated by autoresearch'. The router did `from routing import
     COMPLEXITY_THRESHOLD_TOKENS`, a copy taken at import, so an autoresearch change (or a test that patches the

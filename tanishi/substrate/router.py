@@ -29,8 +29,7 @@ import os
 from dataclasses import dataclass
 
 from tanishi import guard
-from tanishi.config import models
-from tanishi.config.routing import COMPLEXITY_THRESHOLD_TOKENS
+from tanishi.config import models, routing
 from tanishi.core_state import events
 from tanishi.substrate.state import Step
 
@@ -117,7 +116,9 @@ def route(step: Step, context: RouteContext) -> RouteDecision:
             return _refuse(record, "personal step and no local model is up; waiting, never the cloud", wait=True)
         return _decide(record, _local("personal step stays on the local model"))
 
-    paid = models.CLAUDE_COMPLEX if estimate_tokens(text) >= COMPLEXITY_THRESHOLD_TOKENS else models.CLAUDE_SIMPLE
+    # The threshold is read per call, not copied at import: autoresearch mutates tanishi/config/routing.py.
+    paid = models.CLAUDE_COMPLEX if estimate_tokens(text) >= routing.COMPLEXITY_THRESHOLD_TOKENS \
+        else models.CLAUDE_SIMPLE
     why = "needs tools, so a model with tool support" if context.needs_tools else "not personal, so a cloud model"
     if context.personal:
         why += " (personal rule switched off)"
