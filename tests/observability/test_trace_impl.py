@@ -127,6 +127,21 @@ def test_a_generator_span_owns_what_runs_inside_the_generator_only():
     assert one("consumer-child")["parent_id"] == one("consumer")["span_id"]
 
 
+def test_a_stream_dropped_after_its_consumer_leaves_no_stale_parent():
+    def stream():
+        with span("dropped"):
+            yield 1
+
+    with span("gone"):
+        g = stream()
+        next(g)
+    del g  # finalised here: its span closes and restores "gone", which is already closed
+    with span("after"):
+        pass
+    assert one("dropped")["error"] == "GeneratorExit"
+    assert one("after")["parent_id"] is None
+
+
 def test_an_async_generator_span_does_not_take_the_consumers_events():
     async def stream():
         with span("agen"):

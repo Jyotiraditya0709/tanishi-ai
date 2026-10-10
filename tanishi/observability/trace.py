@@ -5,13 +5,17 @@
 keep separate trees. Each record holds the span's id, its parent's id, the task id from
 ``events.current_task()``, the model, tokens in and out, latency, tool calls and the ids of the events emitted
 inside it (innermost open span only). Values known only later (tokens after a model call) go in through
-``s.set(...)``. A ``tool_call`` event emitted inside a span adds its tool to the span's tool calls.
+``s.set(...)``. A ``tool_call`` event emitted inside a span adds its tool to the span's tool calls, unless the
+caller already passed that tool. A span opened inside a generator owns events and child spans only while the
+generator runs, not while it is suspended at a ``yield`` (decision 0023 has the rule for streaming code).
 
 Tracing fails open: nothing here may break the traced code. Every failure is swallowed (one warning per
 process, exception type only), and the body's own exception propagates unchanged. Records are redacted with
-the event log's ``redact()`` and clipped before they reach disk.
+the event log's ``redact()``, clipped, and capped at MAX_RECORD_BYTES before they reach disk. Traces carry ids,
+counts and lengths, never prompts or conversation text.
 
-``python -m tanishi.observability.trace <task_id>`` prints one task's spans as an indented tree.
+``python -m tanishi.observability.trace <task_id>`` prints one task's spans as an indented tree, with every
+control character escaped.
 """
 from __future__ import annotations
 
