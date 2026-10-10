@@ -17,9 +17,9 @@ import time
 from pathlib import Path
 
 import pytest
-from tanishi.observability.trace import span
 
 from tanishi.core_state import events
+from tanishi.observability.trace import span
 
 ALIASES = {
     "name": ("name", "span", "span_name"),
