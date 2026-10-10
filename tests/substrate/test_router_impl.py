@@ -188,3 +188,26 @@ def test_estimate_counts_utf8_bytes_and_survives_a_lone_surrogate(gate_off):
     assert router.estimate_tokens("é" * 40) == 20  # two bytes each
     assert router.estimate_tokens("\ud800" * 4) == 3
     assert router.route(Step("a", "broken \ud800 text"), ctx()).model_id == M.CLAUDE_SIMPLE
+
+
+def test_input_tokens_drive_size_and_estimate_when_given(warden):
+    calls, _ = warden
+    d = router.route(Step("a", "hi"), ctx(needs_tools=True, input_tokens=COMPLEXITY_THRESHOLD_TOKENS * 3))
+    assert d.model_id == M.CLAUDE_COMPLEX
+    big = calls[-1]["cost_estimate"]
+    router.route(Step("b", "hi"), ctx(needs_tools=True))
+    assert calls[-1]["cost_estimate"] < big
+    assert big == router.estimate_cost(M.CLAUDE_COMPLEX, "hi", COMPLEXITY_THRESHOLD_TOKENS * 3)
+    ev = last_event()
+    assert ev.payload["input_tokens_given"] is False and ev.payload["input_tokens"] == router.estimate_tokens("hi")
+
+
+def test_without_input_tokens_the_step_text_is_the_estimate(gate_off):
+    assert router.RouteContext().input_tokens is None
+    assert router.route(Step("a", "x" * (COMPLEXITY_THRESHOLD_TOKENS * 4)), ctx()).model_id == M.CLAUDE_COMPLEX
+
+
+@pytest.mark.parametrize("bad, err", [(-1, ValueError), (True, TypeError), (1.5, TypeError), ("100", TypeError)])
+def test_bad_input_tokens_are_rejected(bad, err):
+    with pytest.raises(err):
+        router.RouteContext(input_tokens=bad)

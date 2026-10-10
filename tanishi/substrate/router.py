@@ -62,6 +62,15 @@ class RouteContext:
     personal: bool = False
     local_up: bool = True  # a local model is reachable; probing for it is the caller's job
     personal_local_only: bool = True  # only the bool False switches the rule off; None, 0, "" etc. keep it on
+    # Tokens the whole call will send (system prompt, memory, history and the step). None: estimate from the step.
+    input_tokens: int | None = None
+
+    def __post_init__(self):
+        n = self.input_tokens
+        if n is not None and (isinstance(n, bool) or not isinstance(n, int)):
+            raise TypeError("input_tokens must be an int or None")
+        if n is not None and n < 0:
+            raise ValueError("input_tokens must be >= 0")
 
 
 @dataclass(frozen=True)
@@ -87,10 +96,12 @@ def estimate_tokens(text: str) -> int:
     return max(1, len(text.encode("utf-8", "surrogatepass")) // 4)
 
 
-def estimate_cost(model_id: str, text: str) -> float:
-    """Estimated USD for one call to a paid model: the step text in, a typical reply out."""
+def estimate_cost(model_id: str, text: str, input_tokens: int | None = None) -> float:
+    """Estimated USD for one call to a paid model: the input (`input_tokens` if given, else the step text) in, a
+    typical reply out."""
     price_in, price_out = _PRICES.get(model_id, _MAX_PRICE)
-    return (estimate_tokens(text) * price_in + EXPECTED_OUTPUT_TOKENS * price_out) / 1_000_000
+    tokens_in = estimate_tokens(text) if input_tokens is None else input_tokens
+    return (tokens_in * price_in + EXPECTED_OUTPUT_TOKENS * price_out) / 1_000_000
 
 
 def route(step: Step, context: RouteContext) -> RouteDecision:
@@ -99,8 +110,11 @@ def route(step: Step, context: RouteContext) -> RouteDecision:
     if not isinstance(text, str):
         raise TypeError("step.description must be a str")
     rule_on = context.personal_local_only is not False  # a privacy rule must not fail open on None or 0
+    tokens_in = estimate_tokens(text) if context.input_tokens is None else context.input_tokens
     record: dict = {
         "step_id": step.id,
+        "input_tokens": tokens_in,
+        "input_tokens_given": context.input_tokens is not None,
         "needs_tools": bool(context.needs_tools),
         "personal": bool(context.personal),
         "local_up": bool(context.local_up),
@@ -117,14 +131,14 @@ def route(step: Step, context: RouteContext) -> RouteDecision:
         return _decide(record, _local("personal step stays on the local model"))
 
     # The threshold is read per call, not copied at import: autoresearch mutates tanishi/config/routing.py.
-    paid = models.CLAUDE_COMPLEX if estimate_tokens(text) >= routing.COMPLEXITY_THRESHOLD_TOKENS \
+    paid = models.CLAUDE_COMPLEX if tokens_in >= routing.COMPLEXITY_THRESHOLD_TOKENS \
         else models.CLAUDE_SIMPLE
     why = "needs tools, so a model with tool support" if context.needs_tools else "not personal, so a cloud model"
     if context.personal:
         why += " (personal rule switched off)"
 
     if _GUARD_ON:
-        estimate = estimate_cost(paid, text)
+        estimate = estimate_cost(paid, text, tokens_in)
         allowed, warden_reason = _ask_spend(estimate)
         record["spend"] = {"model_id": paid, "estimate": estimate, "allowed": allowed, "reason": warden_reason}
         if not allowed:
