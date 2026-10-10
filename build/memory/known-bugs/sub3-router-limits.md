@@ -7,7 +7,10 @@
 - **`needs_tools` and `personal` are trusted.** The router does not infer them from the text. A caller that forgets to
   set `personal=True` sends personal text to the cloud.
 - **Estimate is rough.** List prices are hard-coded per model id and the output is assumed to be 1024 tokens. A long
-  reply costs more than was checked; `report_spend` corrects the Warden's total afterwards, not the decision.
+  reply costs more than was checked; `report_spend` corrects the Warden's total afterwards, not the decision. The
+  input side is only as good as `RouteContext.input_tokens`: a caller that leaves it None gets the step text alone,
+  which misses the system prompt, memory and history. UTF-8 bytes // 4 is itself a rough guess per language.
+- **`route()` blocks.** With the gate on it waits on the Warden's socket. Async code must call `aroute()`.
 - **Check and record are separate.** Two concurrent steps can both pass `check_spend` just under the cap and together
   exceed it. Fixing that needs a reservation in the Warden, which is a protected path.
 - **Reload replaces classes.** `importlib.reload(router)` (the exam does it) creates new `RouteRefused` and
