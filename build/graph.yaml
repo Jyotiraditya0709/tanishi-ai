@@ -523,6 +523,9 @@ nodes:
       - A step marked personal goes to a local model unless you have switched the rule off; if no local model is up, the step waits or fails, it never silently goes to the cloud.
       - Every decision is an event with its reason.
       - Model ids come from tanishi/config/models.py only.
+      - Before any paid model call the router asks tanishi.guard.check_spend(estimate); on deny it falls back to a
+        local model (or waits), never the paid one. After the call it reports tanishi.guard.record_spend(actual).
+        Spend checks run only when TANISHI_GUARD=1, the same switch as the tool gate.
 
   - id: SUB4
     title: Uncertainty and Self Model v0
