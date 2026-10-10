@@ -129,3 +129,77 @@ def test_cli_prints_only_the_scores(fx, store, capsys):
 def test_cli_reports_a_refused_store(fx, tmp_path, capsys):
     assert main([str(tmp_path / "missing"), "c", "--executor", "frontier_impl_fx.good"]) == 2
     assert "FileNotFoundError" in capsys.readouterr().err
+
+
+# --- repair round (red-team RT-1, RT-4, RT-5, RT-6) -----------------------------------------------------------------
+
+
+def test_query_budget_refuses_and_records_the_refusal(fx, store, monkeypatch):
+    from tanishi.arena import frontier_service as fs
+
+    monkeypatch.setattr(fs, "DAILY_QUERY_BUDGET", 2)
+    _task(store, "t1")
+    svc = FrontierService(store, executor=fx.good)
+    svc.evaluate("c")
+    svc.evaluate("c")
+    with pytest.raises(fs.QueryBudgetExceeded):
+        svc.evaluate("c")
+    assert len(svc.evaluate("other")) == 1  # the budget is per candidate
+    entries = [json.loads(line) for line in (store / ".queries").read_text().splitlines()]
+    assert [e["outcome"] for e in entries] == ["ran", "ran", "refused", "ran"]
+    assert stat.S_IMODE((store / ".queries").stat().st_mode) == 0o600
+
+
+def test_budget_is_not_spent_on_a_refused_store(fx, store):
+    _task(store, "t1")
+    (store / "t2.yml").write_text("x")
+    with pytest.raises(ValueError):
+        FrontierService(store, executor=fx.good).evaluate("c")
+    assert not (store / ".queries").exists()
+
+
+def test_cost_is_rounded_to_cents_and_capped():
+    from tanishi.arena.frontier_service import MAX_COST_PER_TASK, _bounded_cost
+
+    assert _bounded_cost(0.123456) == 0.12
+    assert _bounded_cost(1e300) == MAX_COST_PER_TASK
+    for garbage in (float("nan"), float("inf"), -1.0, True, "3", None):
+        assert _bounded_cost(garbage) == 0.0
+
+
+def test_concurrent_first_calls_agree_on_the_salt(store):
+    import threading
+
+    from tanishi.arena.frontier_service import _salt
+
+    keys = []
+    threads = [threading.Thread(target=lambda: keys.append(_salt(store))) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(set(keys)) == 1 and len(keys[0]) == 32
+    assert [p.name for p in store.iterdir()] == [".salt"]  # no temp file left behind
+
+
+def test_cli_accepts_only_the_expected_hashes_and_numbers():
+    from tanishi.arena.frontier_service import _parse_child
+
+    h = "a" * 32
+    other = "b" * 32
+    good = "ok " + h + " 1.0 0.1\nend\n"
+    assert _parse_child(good.encode(), {h}) == [{"task_id_hash": h, "score": 1.0, "cost": 0.1}]
+    for bad in (
+        "ok " + h + " 1.0 0.1\n",  # no end marker
+        "ok " + other + " 1.0 0.1\nend\n",  # a hash the store did not produce
+        "ok " + h + " 1.0 0.1 leak\nend\n",  # an extra field
+        "ok " + h + " nan 0.1\nend\n",
+        "ok " + h + " 1.0 0.123\nend\n",  # cost not in cents
+        "ok " + h + " 1.0 1e9\nend\n",  # cost over the cap
+        "end\n",  # a task missing
+    ):
+        with pytest.raises(RuntimeError) as exc:
+            _parse_child(bad.encode(), {h})
+        assert "leak" not in str(exc.value)
+    with pytest.raises(RuntimeError, match=r"\(ImportError\)"):
+        _parse_child(b"error ImportError\nend\n", {h})

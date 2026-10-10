@@ -116,7 +116,6 @@ def _task(store: Path, tid="t1", *, verifier="rt_ar3_fx.exact", prompt=PROMPT, e
 # --- RT-1..4 (high): candidate code runs unsandboxed as the service user, so the boundary is only a convention ------
 
 
-@pytest.mark.xfail(strict=True, reason="RT-AR3-1: cost is chosen by the candidate and returned verbatim")
 def test_cost_cannot_carry_the_prompt_across_the_boundary(fx):
     _task(fx.store)
     (e,) = FrontierService(fx.store, executor=fx.mod.cost_carries_prompt).evaluate("c")
@@ -138,7 +137,6 @@ def test_executor_cannot_read_the_store(fx):
     assert not fx.drop.exists() or PROMPT not in fx.drop.read_text()
 
 
-@pytest.mark.xfail(strict=True, reason="RT-AR3-4: the CLI imports the executor module inside the process that prints")
 def test_cli_output_is_only_scores_even_for_a_hostile_executor_module(fx):
     _task(fx.store)
     (fx.moddir / "rt_ar3_cli.py").write_text(_CLI_SRC.replace("__STORE__", repr(str(fx.store))))
@@ -168,7 +166,6 @@ def test_a_hidden_needle_cannot_be_bisected_out_of_the_scores(fx):
 # --- RT-6 (medium): a crashed first run bricks the store ------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="RT-AR3-6: .salt is created then written; a crash between leaves a 0-byte salt forever")
 def test_a_salt_left_empty_by_a_crash_does_not_brick_the_store(fx):
     _task(fx.store)
     salt = fx.store / ".salt"
@@ -180,7 +177,6 @@ def test_a_salt_left_empty_by_a_crash_does_not_brick_the_store(fx):
 # --- RT-7 (medium): process-global env swap corrupts the caller's env when two evaluations overlap ------------------
 
 
-@pytest.mark.xfail(strict=True, reason="RT-AR3-7: overlapping evaluate() calls restore a deleted temp db path as the caller's db")
 def test_overlapping_evaluations_restore_the_callers_db_path(fx, monkeypatch):
     _task(fx.store)
     before = os.environ["TANISHI_CORE_STATE_DB"]
@@ -215,7 +211,6 @@ def test_overlapping_evaluations_restore_the_callers_db_path(fx, monkeypatch):
 # --- RT-8..11 (medium/low): a wrong or hostile input gives a normal-looking answer ----------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="RT-AR3-8: seeds has no upper bound; one call can pin the service for years")
 def test_seeds_are_capped(fx, monkeypatch):
     _task(fx.store)
 
@@ -227,7 +222,6 @@ def test_seeds_are_capped(fx, monkeypatch):
         FrontierService(fx.store, executor=fx.mod.good).evaluate("c", seeds=10**6)
 
 
-@pytest.mark.xfail(strict=True, reason="RT-AR3-9: per-seed costs are finite but their sum overflows to inf")
 def test_cost_stays_finite_and_json_valid(fx):
     _task(fx.store)
     out = FrontierService(fx.store, executor=fx.mod.huge_cost).evaluate("c", seeds=2)
@@ -235,7 +229,6 @@ def test_cost_stays_finite_and_json_valid(fx):
     json.dumps(out, allow_nan=False)
 
 
-@pytest.mark.xfail(strict=True, reason="RT-AR3-10: a task whose verifier cannot be imported scores 0 like a bad candidate")
 def test_a_task_with_a_missing_verifier_is_refused_not_scored_zero(fx):
     _task(fx.store, "t1")
     _task(fx.store, "t2", verifier="no_such_module_rt_ar3.check")
@@ -243,7 +236,6 @@ def test_a_task_with_a_missing_verifier_is_refused_not_scored_zero(fx):
         FrontierService(fx.store, executor=fx.mod.good).evaluate("c")
 
 
-@pytest.mark.xfail(strict=True, reason="RT-AR3-11: files that are not *.yaml are skipped, so a task can vanish from the score")
 def test_a_task_file_with_another_extension_is_refused_not_skipped(fx):
     _task(fx.store, "t1")
     _task(fx.store, "t2", ext="yml")
