@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 720" width="1200" height="720" role="img" aria-label="Six dimensions of capability expansion" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+<title>Six dimensions of capability expansion</title>
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8FA6BF"/></marker><marker id="arrT" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5EEAD4"/></marker><marker id="arrA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#F5B971"/></marker><marker id="arrV" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#A5B4FC"/></marker><radialGradient id="glow" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#5EEAD4" stop-opacity="0.25"/><stop offset="100%" stop-color="#5EEAD4" stop-opacity="0"/></radialGradient></defs>
+<rect width="1200" height="720" rx="18" fill="#0B1622"/>
+<text x="600" y="52" text-anchor="middle" fill="#5EEAD4" font-size="15" font-weight="700" letter-spacing="4">CAPABILITY EXPANSION</text>
+<text x="600" y="78" text-anchor="middle" fill="#8FA6BF" font-size="13.5" font-weight="400" letter-spacing="0" font-style="italic">not how good she is, but how fast the frontier grows</text>
+<polygon points="600.0,335.0 643.3,360.0 643.3,410.0 600.0,435.0 556.7,410.0 556.7,360.0" fill="none" stroke="#2C4A6B" stroke-width="1"/>
+<polygon points="600.0,285.0 686.6,335.0 686.6,435.0 600.0,485.0 513.4,435.0 513.4,335.0" fill="none" stroke="#2C4A6B" stroke-width="1"/>
+<polygon points="600.0,235.0 729.9,310.0 729.9,460.0 600.0,535.0 470.1,460.0 470.1,310.0" fill="none" stroke="#2C4A6B" stroke-width="1"/>
+<polygon points="600.0,185.0 773.2,285.0 773.2,485.0 600.0,585.0 426.8,485.0 426.8,285.0" fill="none" stroke="#2C4A6B" stroke-width="1.4"/>
+<line x1="600" y1="385" x2="600.0" y2="185.0" stroke="#2C4A6B" stroke-width="1"/>
+<line x1="600" y1="385" x2="773.2" y2="285.0" stroke="#2C4A6B" stroke-width="1"/>
+<line x1="600" y1="385" x2="773.2" y2="485.0" stroke="#2C4A6B" stroke-width="1"/>
+<line x1="600" y1="385" x2="600.0" y2="585.0" stroke="#2C4A6B" stroke-width="1"/>
+<line x1="600" y1="385" x2="426.8" y2="485.0" stroke="#2C4A6B" stroke-width="1"/>
+<line x1="600" y1="385" x2="426.8" y2="285.0" stroke="#2C4A6B" stroke-width="1"/>
+<polygon points="600.0,213.0 735.1,307.0 755.9,475.0 600.0,549.0 461.4,465.0 471.8,311.0" fill="#5EEAD4" fill-opacity="0.1" stroke="#5EEAD4" stroke-width="2" stroke-dasharray="6 5"/>
+<polygon points="600.0,321.0 645.0,359.0 665.8,423.0 600.0,445.0 558.4,409.0 565.4,365.0" fill="#A5B4FC" fill-opacity="0.28" stroke="#A5B4FC" stroke-width="2"/>
+<text x="600.0" y="133.0" text-anchor="middle" fill="#E8EEF5" font-size="16" font-weight="650" letter-spacing="0">Breadth</text>
+<text x="600.0" y="152.0" text-anchor="middle" fill="#8FA6BF" font-size="12.5" font-weight="400" letter-spacing="0">new capability clusters</text>
+<text x="811.3" y="263.0" text-anchor="start" fill="#E8EEF5" font-size="16" font-weight="650" letter-spacing="0">Transfer</text>
+<text x="811.3" y="282.0" text-anchor="start" fill="#8FA6BF" font-size="12.5" font-weight="400" letter-spacing="0">gains on unrelated domains</text>
+<text x="811.3" y="507.0" text-anchor="start" fill="#E8EEF5" font-size="16" font-weight="650" letter-spacing="0">Task horizon</text>
+<text x="811.3" y="526.0" text-anchor="start" fill="#8FA6BF" font-size="12.5" font-weight="400" letter-spacing="0">longer tasks completed</text>
+<text x="600.0" y="643.0" text-anchor="middle" fill="#E8EEF5" font-size="16" font-weight="650" letter-spacing="0">Persistence</text>
+<text x="600.0" y="662.0" text-anchor="middle" fill="#8FA6BF" font-size="12.5" font-weight="400" letter-spacing="0">still mastered 90 days later</text>
+<text x="388.7" y="521.0" text-anchor="end" fill="#E8EEF5" font-size="16" font-weight="650" letter-spacing="0">Autonomy</text>
+<text x="388.7" y="540.0" text-anchor="end" fill="#8FA6BF" font-size="12.5" font-weight="400" letter-spacing="0">less human effort per gain</text>
+<text x="388.7" y="255.0" text-anchor="end" fill="#E8EEF5" font-size="16" font-weight="650" letter-spacing="0">Environment novelty</text>
+<text x="388.7" y="274.0" text-anchor="end" fill="#8FA6BF" font-size="12.5" font-weight="400" letter-spacing="0">verified in worlds she didn't author</text>
+<rect x="64" y="626" width="22" height="12" rx="3" fill="#A5B4FC" fill-opacity="0.35" stroke="#A5B4FC"/>
+<text x="96" y="637" text-anchor="start" fill="#E8EEF5" font-size="13" font-weight="400" letter-spacing="0">where a capability starts</text>
+<rect x="64" y="654" width="22" height="12" rx="3" fill="#5EEAD4" fill-opacity="0.12" stroke="#5EEAD4" stroke-dasharray="4 3"/>
+<text x="96" y="665" text-anchor="start" fill="#E8EEF5" font-size="13" font-weight="400" letter-spacing="0">where the loop pushes it</text>
+<text x="1136" y="637" text-anchor="end" fill="#8FA6BF" font-size="13" font-weight="400" letter-spacing="0">expansion = breadth × transfer × horizon</text>
+<text x="1136" y="657" text-anchor="end" fill="#8FA6BF" font-size="13" font-weight="400" letter-spacing="0">× persistence × autonomy × novelty</text>
+<text x="1136" y="679" text-anchor="end" fill="#5EEAD4" font-size="12.5" font-weight="400" letter-spacing="0" font-style="italic">a zero anywhere zeroes the whole</text>
+</svg>

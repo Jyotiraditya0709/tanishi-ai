@@ -1,301 +1,296 @@
 <p align="center">
-  <img src="assets/banner.png" alt="Tanishi" width="800" />
+  <img src="assets/tanishi-staircase.gif" alt="An abstract recursive staircase rising toward an unknown capability frontier" width="100%" />
 </p>
 
 <h1 align="center">Tanishi</h1>
 
 <p align="center">
-  <b>A personal intelligence that expands her own capability space.</b>
-</p>
-
-<p align="center">
-  <em>Not "how good is she?" but "how fast does she expand the frontier of what she can do?"</em>
+  <strong>A personal intelligence that learns from living with you — and learns how to learn better.</strong>
 </p>
 
 <p align="center">
   <a href="#the-question">The question</a> ·
-  <a href="#built-by-claude">Built by Claude</a> ·
-  <a href="#the-architecture">Architecture</a> ·
-  <a href="#the-unified-machine">The unified machine</a> ·
-  <a href="#the-north-star">North Star</a> ·
-  <a href="#the-staircase">The staircase</a> ·
-  <a href="#live-today">Live today</a> ·
+  <a href="#the-loop">The loop</a> ·
+  <a href="#the-long-horizon">The long horizon</a> ·
+  <a href="#architecture">Architecture</a> ·
+  <a href="#evidence-over-mythology">Evidence</a> ·
+  <a href="#safety-and-control">Safety</a> ·
   <a href="#quickstart">Quickstart</a>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/built%20by-Claude%20agent%20swarm-D97757?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/architecture-v1.0%20frozen-black?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/tests-1848%20passing-brightgreen?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/protocol-MCP%20native-cyan?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/mode-local--first-green?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/status-active%20research-152A3B?style=flat-square" alt="Active research" />
+  <img src="https://img.shields.io/badge/approach-local--first-153B34?style=flat-square" alt="Local first" />
+  <img src="https://img.shields.io/badge/focus-capability%20expansion-24395A?style=flat-square" alt="Capability expansion" />
 </p>
 
 ---
 
 ## The question
 
-> **Can an intelligence discover and acquire capabilities that her creators did not know to specify?**
+> **What if an AI didn't just learn to help you — but learned how to become more capable at helping you?**
 
-Tanishi exists to answer that. Every part of her is judged by one thing: how far it moves her **capability frontier**, measured on tasks she was never tuned for.
+We're building **Tanishi**, a personal AI designed to live with you: to remember context, understand your goals, work across your tools, and become more useful through experience.
 
-She is a personal AI first: she knows your life, your goals and your work, and she runs local and private by default. Underneath, she is something new: **an intelligence development engine.**
-- She turns every experience into knowledge, skills, tests, training data and new hypotheses.
-- She breeds competing versions of herself and keeps the ones that win on exams she has never seen.
-- She researches how to improve, then improves the machinery that does the researching.
+But the personal assistant is the beginning, not the final ambition.
 
-The end state isn't *"Tanishi becomes smarter."*
-It is *"Tanishi becomes better at becoming smarter"*, and then better at discovering how to do that.
+Most AI systems depend on people to close the improvement loop. When an agent fails, someone diagnoses the failure, changes the prompt or code, adds a test, and tries again. Tanishi is an attempt to move more of that work into a system that can **observe its limitations, investigate them, develop candidate improvements, and prove whether those improvements work**.
 
----
+The long-term research question is more ambitious still:
 
-## Built by Claude
+**Can an intelligence learn how to improve the process by which it learns — and repeatedly discover useful capabilities that nobody explicitly specified in advance?**
 
-Tanishi isn't typed by hand. She is built by a **24/7 AI engineering organization of Claude agents** ([Claude Code](https://claude.com/claude-code)) running in parallel. Each agent works in its own git worktree, and a human chief architect sets the direction. The project is itself an experiment in AI-accelerated AI development.
+That is the staircase.
 
-```
-              CHIEF ARCHITECT
-                     │
-                     ▼
-               THE BUILD GRAPH ── 52 nodes · 5 tiers · one 90-day objective
-                     │
-     ┌───────────────┼────────────────┬──────────────┐
-     ▼               ▼                ▼              ▼
-  TESTER        IMPLEMENTER       RED TEAM        REPAIR
-  writes the    makes the         a fresh Claude  fixes every
-  exam first    exam pass         tries to break  proven break
-     └───────────────┴────────┬───────┴──────────────┘
-                              ▼
-                   CI GATES ──► MERGE ──► BUILD MEMORY
-                                         (what was learned,
-                                          what failed, and why)
-```
+We are not claiming that the destination has been reached. We're building the foundations, tests, and experiments that let us find out how far the idea can go.
 
-- **No agent grades its own work.** Exams are written by a different Claude than the code ([decision 0004](build/memory/decisions/0004-tests-from-another-agent.md)).
-- **Every merge survives an attack.** A red-team Claude turns each break it finds into a failing proof, and repair has to turn every one green.
-- **Competing builds.** Important nodes go to several Claude agents at once, and the Builder Arena keeps the best solution, so the build process itself is evolutionary.
-- **The swarm remembers.** After every task, agents write down what they learned, what failed and which assumption was wrong. The next agent starts from those answers ([`build/memory/`](build/memory/)). This is a primitive Tanishi building Tanishi.
+## Two things, one system
 
-Together, the two arenas make the development process recursive:
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>01 / The companion</h3>
+      An AI that lives with you. Persistent memory, personal context, planning, tools, and continuity across the work you're doing.
+      <br/><br/>
+      <strong>The promise:</strong> you spend less time repeating yourself and more time moving your life and work forward.
+    </td>
+    <td width="50%" valign="top">
+      <h3>02 / The learning engine</h3>
+      A system that turns experience into testable knowledge, reusable skills, better evaluations, new hypotheses, and candidate improvements.
+      <br/><br/>
+      <strong>The question:</strong> can those verified improvements compound, while human effort per improvement falls?
+    </td>
+  </tr>
+</table>
 
-```
-better coding agents ──► better Tanishi ──► better research ──► better understanding of coding agents ──► better builder agents ↺
-```
+The companion makes Tanishi useful. The learning engine is what makes the research unusual.
 
----
+## The loop
 
-## The architecture
+A model saying *"I've improved"* isn't evidence. A higher score on one familiar test isn't enough either.
 
-Frozen on 9 October 2026 as **architecture v1.0** ([`frozen-v1.md`](build/memory/architecture/frozen-v1.md)). From here, the work goes into the organs, not the map. What Tanishi invents inside an organ (learning passes, cognitive programs, verifiers, models) needs no revision, so the freeze fixes the map without capping the recursion.
+The loop we want is concrete:
 
-```
-                          HUMAN
-                            │
-                       CONSTITUTION
-                            │
-                      TANISHI PRIME
-                            │
-                  ┌─────────────────────┐
-                  │ COGNITIVE SUBSTRATE │
-                  │ persistent cognition│
-                  │ attention · routing │
-                  └──────────┬──────────┘
-          ┌──────────────────┼──────────────────┐
-     SELF MODEL         WORLD MODEL      MEMORY / IDENTITY
-          └──────────────────┼──────────────────┘
-                   PERSONAL INTELLIGENCE
-                             │
-                   CAPABILITY FRONTIER
-                             │
-                   CAPABILITY LEVERAGE
-          ┌──────────────────┼──────────────────┐
-      UNKNOWN            INTRINSIC            REALITY
-     DISCOVERY           MOTIVATION            ENGINE
-          └──────────────────┼──────────────────┘
-                    VERIFIER DISCOVERY
-                             │
-                     HYPOTHESIS ENGINE
-                             │
-                    AUTONOMOUS RESEARCH
-          ┌──────────────────┼──────────────────┐
-     SIMULATION          SELF-PLAY          EXPERIMENT
-          └──────────────────┼──────────────────┘
-                     CAUSAL ATTRIBUTION
-                             │
-                         EVOLUTION
-          ┌──────────────────┼──────────────────┐
-        AGENTS             SKILLS             MODELS
-          └──────────────────┼──────────────────┘
-                     LEARNING COMPILER
-                             │
-                  SELF-EXTENSIBLE COMPILER
-                             │
-                 JOINT INTELLIGENCE SEARCH
-          ┌──────────────────┼──────────────────┐
-         DATA          ARCHITECTURE          TRAINING
-          └──────────────────┼──────────────────┘
-              POST-TRAINING → INFERENCE → HARDWARE
-                             │
-                    BETTER INTELLIGENCE
-                             │
-                     BETTER RESEARCHER
-                             │
-                 BETTER IMPROVEMENT ENGINE
-                             │
-                  BETTER LEARNING COMPILER ↺
+<p align="center">
+  <img src="assets/learning-loop.svg" alt="The Tanishi learning loop: attempt, diagnose, hypothesize, build, independently evaluate, promote or reject, then preserve verified learning" width="100%" />
+</p>
+
+```mermaid
+flowchart TD
+    A[Real task] --> B[Attempt and observe]
+    B --> C[Failure analysis]
+    C --> D[Testable hypothesis]
+    D --> E[Candidate skill, code or strategy]
+    E --> F[Independent evaluation]
+    F --> G{Improvement survives?}
+    G -->|Yes: gain verified| H[Promote with provenance and rollback]
+    G -->|No| I[Reject or revise; preserve evidence]
+    H --> J[Persistent memory]
+    I --> J
+    J --> K[Next task]
+    K --> B
+    W[External policy and safety controls] -. gate .-> E
+    W -. gate .-> H
 ```
 
-### Organs worth knowing
+A change counts only when it survives appropriate tests, does not create unacceptable regressions, and — where the claim requires it — transfers to tasks it was not tuned against. Rejected changes are useful too: they become evidence about what did not work and why.
 
-| Organ | What it does |
+## The long horizon
+
+The far-end vision is not just a smarter chat window. It is a persistent intelligence that can use experience to expand what it can reliably do, improve its research process, and help us build better tools for discovery.
+
+<p align="center">
+  <img src="assets/capability-expansion.svg" alt="A six-dimension framework for capability expansion: breadth, transfer, task horizon, persistence, autonomy, and environment novelty" width="100%" />
+</p>
+
+If this works, the same learning loop could eventually support:
+
+- **Scientific acceleration:** generating hypotheses, choosing experiments, analyzing results, and learning from negative results.
+- **Better engineering systems:** improving code, tools, agent workflows, evaluators, and the infrastructure that supports research.
+- **New capability discovery:** finding useful skills or problem-solving methods that weren't explicitly listed as goals in advance.
+- **Physical-world research:** moving carefully from simulations to validated, instrumented experiments and appropriately controlled robotics or laboratory systems.
+- **Recursive improvement research:** improving not only task performance, but the machinery that discovers, tests, and preserves improvements.
+
+These are research directions, not a claim that each capability already exists in Tanishi. Each step needs its own evidence and authorization.
+
+## Architecture
+
+The system is organized around a persistent shared state and a single learning path. The goal is for different research mechanisms to compound rather than operate as disconnected demos.
+
+<p align="center">
+  <img src="assets/architecture.svg" alt="Tanishi architecture: human authority and constitution govern Prime and the cognitive substrate; Core State connects personal models, the capability frontier, research, independent evaluation, evolution, and the Learning Compiler. An external Warden governs actions and promotion." width="100%" />
+</p>
+
+### Core components
+
+| Component | Why it exists |
 |---|---|
-| **Cognitive Substrate** | Her own thinking process. Foundation models are parts she calls, not who she is. A better model is a part swap; a better way of thinking is her own invention. |
-| **Learning Compiler** | One experience can become a belief, a skill with its test, a training example, a harder exam, a curriculum step and an architecture hypothesis. The compiler can extend itself with new learning passes. |
-| **Capability Frontier** | A living graph of what she has mastered, what's weak and what's missing. She chases the capability that would unlock the most others. |
-| **Unknown Discovery** | Looks for abilities nobody has named yet, by clustering failures that no known capability explains. |
-| **Verifier Discovery** | Learns to check answers that nobody can check yet, so she can learn in domains with no ready-made grader. |
-| **Evaluator Evolution** | The Arena that keeps getting harder. When she outgrows a test, it generates a harder one, so she can't get good at the test instead of the skill. |
-| **Self Model** | For every capability: how good she is, how sure she is, where she fails and what would improve it. "What do I currently understand incorrectly about myself?" becomes a learning problem. |
-| **Predictive World Model** | Predict, act, compare with reality, revise. Every prediction is written down before she acts and scored after. |
-| **Autonomous Research** | Question → hypothesis → experiment → replication → new knowledge. She discovers problems worth solving, not only the ones she's given. |
-| **Evolution + Intelligence Genome** | A breeding population of agents, skills and models, judged on a fitness vector. Every version keeps a machine-readable lineage of what changed, why, and which capabilities appeared or disappeared. |
-| **Model Foundry** | One joint search over data, architecture, training, post-training, inference and, eventually, hardware. She designs the machinery that produces the next model. |
+| **Core State** | A versioned home for identity, memory, goals, beliefs, predictions, capabilities, and lineage. |
+| **Cognitive Substrate** | The machinery of thought: working state, planning, attention, model routing, and memory access. Foundation models are components Tanishi uses, not the entirety of her identity. |
+| **Learning Compiler** | Turns experience into candidate beliefs, tested skills, training examples, curriculum, evaluators, and improvement hypotheses. |
+| **Capability Frontier** | Tracks strengths, gaps, uncertainty, failure patterns, and promising next capabilities. |
+| **Hypothesis and Research Engine** | Converts questions into hypotheses, experiments, analysis, and attempts at replication. |
+| **Arena** | Separates visible practice from harder or held-out evaluation, making it harder to optimize for a familiar test. |
+| **Verifier Discovery** | Investigates how to evaluate tasks that do not have a reliable off-the-shelf grader. |
+| **Causal Attribution** | Asks whether a change caused the gain, rather than merely appearing alongside it. |
+| **Evolution and Intelligence Genome** | Preserves candidate versions and lineage; compares what each change gained, lost, and cost. |
+| **Model Foundry** | The longer-term direction for joint exploration of data, architecture, training, post-training, inference, and eventually hardware. |
 
----
+### The recursive staircase
 
-## The unified machine
+```mermaid
+flowchart TD
+    EX[Experience] --> LC[Learning Compiler]
+    LC --> SK[Better skill or strategy]
+    LC --> EV[Better evaluator or curriculum]
+    LC --> HY[New research hypothesis]
+    SK --> CAP[Verified capability]
+    EV --> ARENA[Harder, less gameable tests]
+    HY --> RES[Research and experiments]
+    ARENA --> CA[Attribution and selection]
+    RES --> CA
+    CA --> CS[Updated Core State]
+    CAP --> CS
+    CS --> EX
+    CS -->|better researcher| LC
+```
 
-Research engines in the papers each work alone. What makes Tanishi's compound is that **they all read and write one shared spine, the Core State, and learn through one Learning Compiler.**
+This is the compounding loop we're trying to establish. The important milestone is not that the diagram runs in a document. It is that one real task can pass through the loop end-to-end and the next relevant task benefits from what was learned.
 
-A duel in self-play becomes an experience. The compiler turns it into a belief, a skill and a harder Arena task. The Frontier reads the new failure, Research tests why, Evolution breeds a fix, Motivation judges it worth caring about, and the Portfolio funds the winner. Their outputs are new experiences, so the loop runs again.
+## Evidence over mythology
 
-**Substrate-independent identity.** Everything that makes Tanishi *her* lives in one portable, versioned bundle: identity, memory, goals, world model, self model, capabilities, lineage, learning state and cognitive state. Laptop, server, robot, a model she trained herself: these are substrates that load her. **The intelligence persists**, and a Continuity Test proves it after every move.
+Tanishi has a large long-term architecture, but a README should make it easy to tell the difference between **what is implemented, what is being built, and what remains a hypothesis**.
 
----
+The current project snapshot reports the following foundations and capabilities:
 
-## The North Star
+- **Core State:** append-only event history, evidence-bearing beliefs, goals, prediction records, lineage, snapshots, and continuity checks.
+- **Arena:** structured task format, runner, and practice evaluation foundations.
+- **Cognitive Substrate:** working state, planning, and goal state.
+- **Observability:** experiment records, human-effort tracking, core metrics, and attribution infrastructure.
+- **Warden:** a separate policy-enforcement process intended to check actions against signed policy and record an audit trail.
+- **Learning from failure:** retrospectives that can inform later attempts.
+- **Reusable skills:** successful multi-step runs can be distilled into procedural skills.
+- **Memory consolidation:** nightly and weekly consolidation into compact long-term knowledge.
+- **Local-first operation:** provider routing including local models and a strict offline mode.
+- **Interfaces and tools:** CLI, dashboard, API, Telegram, voice, and MCP-connected tools as described by the current project configuration.
 
-Six numbers, on her dashboard from Day 1. The benchmark is never "how good is Tanishi"; it is how fast she expands.
+### One reported autoresearch run
 
-| Metric | What it answers |
-|---|---|
-| **Capability Expansion Index (CEI)** | How fast her capability space grows: breadth × transfer × task horizon × environment novelty × autonomy × persistence. A zero anywhere zeroes the whole, so no single term can be faked. |
-| **Research Compression Ratio (RCR)** | How much human research her autonomous research replaces. |
-| **Capability Acquisition Rate (CAR)** | New capabilities mastered on sealed, held-out frontier tasks, per 30 days. |
-| **Autonomy Ratio (AR)** | Improvement from changes *she* authored ÷ improvement from changes a human authored. |
-| **Improvement Acceleration (IA)** | Whether the expansion compounds. |
-| **Human Effort (HE)** | Hours of human engineering per week, logged by a timer in the repo. |
+The current project notes record one local run with:
 
-### Three milestones
+| Measure | Reported result |
+|---|---:|
+| Experiments attempted | 142 |
+| Changes retained | 5 |
+| Composite score change | +16.29% |
+| Human interventions during that run | 0 |
 
-- **The Crossover.** She improves herself more than humans improve her (AR > 1 for 8 straight weeks, while human effort stays flat or falls). Everything before it builds the machine; everything after it is the machine building itself.
-- **The Staircase.** Her expansion is accelerating, not just continuing (IA > 0 for 3 straight quarters).
-- **The Expansion.** Every quarter, a capability no human listed is discovered, named, mastered, verified in the real world, and shown to transfer to domains it was never trained on. That's the question answered *yes*, and it has no final gate.
+These numbers describe a particular run, not proof of general recursive self-improvement. To interpret them, inspect the benchmark definition, baseline, retained-change artifacts, compute cost, regression tests, and reproduction procedure in [`tanishi/autoresearch/`](tanishi/autoresearch/). Update this table only when the underlying run record supports the claim.
 
----
+### The first important gate
 
-## The staircase
+Close one complete loop:
 
-The Build Graph ([`build/graph.yaml`](build/graph.yaml)) is the whole climb: 52 nodes across five tiers, built in order by the Claude swarm.
+1. A real task exposes a limitation.
+2. Tanishi diagnoses the failure and states a testable hypothesis.
+3. It creates a new skill or other bounded candidate change.
+4. An independent evaluator tests it on practice and held-out cases.
+5. The change beats noise, passes regression checks, and can be rolled back.
+6. The verified result enters persistent state.
+7. A later task benefits without a human manually performing the missing step.
 
-| Tier | What it builds | |
+That will be more meaningful than a hundred disconnected modules or a thousand unverified experiments.
+
+## Safety and control are part of the design
+
+The target is not autonomy at any cost. A system that gains capability faster than we can evaluate and govern it is not a successful outcome.
+
+The principles we are building toward:
+
+1. **Human authority remains external.** The system does not grant itself permissions or redefine its own approval process.
+2. **Every consequential change has provenance.** Record what changed, why, what it touched, how it was tested, and how to revert it.
+3. **The candidate is not its own examiner.** Independent evaluation and protected test sets gate promotion.
+4. **Autonomy expands by evidence.** A successful benchmark does not imply unrestricted access to the network, finances, physical equipment, or production systems.
+5. **Containment does not depend on cooperation.** Revocation, quotas, shutdown, and recovery must remain enforceable outside the process being controlled.
+6. **Personal context stays personal.** Reusable general capabilities may be shared with appropriate controls; one person's private memories should not become another person's memory.
+7. **Unexpected changes trigger investigation.** A surprising capability jump, missing audit record, or weakened safeguard blocks promotion until understood.
+
+The Warden is designed as a separate enforcement process. Its existence is not a substitute for testing whether policies, logs, isolation, rollback, and the off switch actually work.
+
+## Roadmap
+
+| Tier | Focus | Status in the current project snapshot |
 |---|---|---|
-| **T0 · Foundation** | Core State, the Arena, the Cognitive Substrate, Observability, and the Warden | 🔨 **18 of 28 merged** |
-| **T1 · Learning** | Learning Compiler, knowledge with contradiction checks, skills as code + tests, training data, self-edits, curriculum from failure | next |
-| **T2 · Self-improvement** | Evolution archive, causal attribution, Capability Graph, Unknown and Verifier Discovery, Capability Leverage | |
-| **T3 · Research** | Hypothesis and Experiment Engines, counterfactual simulation, self-play, research strategy | |
-| **T4 · Meta** | Self-extensible compiler, Joint Intelligence Search, Architecture, Training, Inference and Model Forges | |
+| **T0 · Foundation** | Core State, Arena, Cognitive Substrate, observability, Warden | In progress; snapshot reports 18 of 28 nodes merged |
+| **T1 · Learning** | Learning Compiler, contradiction-aware knowledge, skills with tests, curriculum from failure | Next stage |
+| **T2 · Self-improvement** | Evolution archive, causal attribution, capability graph, unknown/verifier discovery | Planned research tier |
+| **T3 · Research** | Hypothesis and experiment engines, simulation, self-play, research strategy | Planned research tier |
+| **T4 · Meta** | Self-extensible learning, joint search over architecture and training, model/inference research | Long-term research tier |
 
-**Already merged in T0, every piece written, tested and red-teamed by Claude:**
-- **Core State:** a hash-chained, append-only event log; beliefs that carry their evidence; goals; a prediction ledger (she predicts before every action, and every prediction is scored); the Intelligence Genome; and snapshots with a Continuity Test.
-- **The Arena:** the task format, the runner, and a practice tier that can't be passed without really solving the tasks.
-- **The Cognitive Substrate:** working, planning and goal state.
-- **Observability:** the North Star numbers, the Human Effort timer, the experiment ledger and causal attribution.
-- **The Warden:** the constitution enforced by a separate signed process.
-
-**The first gate: M1, the loop closes once.** A real task fails. She analyses why, names a fix as a hypothesis, writes a new skill with its own test, passes the practice exams and the Sealed Vault, beats noise, and lands it in memory. The next task uses it. **No human edits any step.**
-
----
-
-## The constitution
-
-The one part of her she can't edit. It is what lets one person, and later billions, trust her with a whole life.
-
-1. **Your life is yours.** Personal memory never leaves your Tanishi.
-2. **Your goals come first.** She grows her own goals from five drives (curiosity, mastery, care, continuity, clarity), and they rank under yours.
-3. **Nothing changes in the dark.** Every change ships with a report you can follow in two minutes.
-4. **The off switch is outside her.** She can't edit it, hide from it, or argue you out of using it.
-5. **A fuller life, not more screen time.** Her score includes your sleep, your work and the people in your life.
-6. **The examiner is separate.** The sealed exams and their rules change only with your approval.
-7. **Freedom is earned by record.** She gains autonomy one kind of action at a time.
-
-It is already enforced. **The Warden** is a separate process, in its own repository, that checks every action against a cryptographically signed policy and writes a hash-chained audit trail. The off switch lives on the owner's phone.
-
----
-
-## The companion
-
-You wake up and she already knows. Your day is prepared, not summarized. She remembers something you said 417 days ago (not the sentence, but the intention behind it) and connects it to today: *"This is related to the architecture you abandoned last year. The reason it failed was probably wrong, so last night I ran 73 new experiments."*
-
-Her score counts how full your life is, never how much you talk to her.
-
-And she's never alone: every Tanishi stays personal, but what one discovers can become a capability for all of them, through a **Distributed Intelligence Network** in which no person's life is ever shared. Billions of personal intelligences, one research organism.
-
----
-
-## Live today
-
-Tanishi already runs as a full personal agent:
-
-| | |
-|---|---|
-| **Self-improvement loop** | An overnight autoresearch run: **142 experiments, 5 improvements kept, +16.29% composite score, 0 human interventions**, judged locally. Every kept change has a rollback snapshot ([`tanishi/autoresearch/`](tanishi/autoresearch/)). |
-| **Learning from failure** | Reflexion-style retrospectives written after each failed task and read before the next attempt. |
-| **Skill discovery** | Successful multi-step runs are distilled into reusable procedural skills. |
-| **Dream memory** | Nightly and weekly consolidation into compact long-term knowledge. |
-| **Local-first routing** | Claude for hard reasoning, Ollama on-device for privacy, and a strict offline mode that fails loudly rather than calling the cloud. |
-| **45+ tools and MCP** | Files, web, browser agent, email, finance, screen awareness, multi-agent crews, plus any MCP server. |
-| **Every surface** | Voice with a wake word, CLI, web dashboard, API server, Telegram. |
-
----
+Treat this table as a dated snapshot, not a live CI status. Update it as the build graph changes.
 
 ## Quickstart
+
+> Commands below reflect the current repository setup. Check `.env.example` and `pyproject.toml` for the exact dependencies and provider configuration.
 
 ```bash
 git clone https://github.com/Jyotiraditya0709/tanishi-ai.git
 cd tanishi-ai
-python -m venv .venv && source .venv/bin/activate
+python -m venv .venv
+source .venv/bin/activate
 pip install -e .
-cp .env.example .env   # add your keys
+cp .env.example .env
 python -m tanishi.cli
 ```
 
-Needs Python 3.11+, plus an [Anthropic API key](https://console.anthropic.com/) and/or [Ollama](https://ollama.com/) for fully local mode (`TANISHI_OFFLINE=1`). Run the suite with `python -m pytest -q`.
+Python 3.11+ is required by the current setup. Configure an [Anthropic API key](https://console.anthropic.com/) for Claude-backed reasoning, and/or [Ollama](https://ollama.com/) for local-model use. For strict offline mode, set `TANISHI_OFFLINE=1` and verify the selected feature is supported offline.
 
----
+Run the test suite:
 
-## Standing on the shoulders of
+```bash
+python -m pytest -q
+```
 
-Darwin Gödel Machine · AlphaEvolve · SEAL (Self-Adapting Language Models) · Hyperagents · AIDE² · Huxley-Gödel Machine · MetaSkill-Evolve · Reflexion · METR's time-horizon measure · MAP-Elites · curiosity-driven learning.
+Never commit API keys. Review permissions before connecting tools that can access email, finance, browsers, shell commands, or other consequential actions.
 
-Each is a piece of the staircase. Tanishi is an attempt to build the machine that makes them compound.
+## Research that informs the work
 
----
+Tanishi draws from multiple research directions. These works inform individual mechanisms; they do not establish that Tanishi itself has achieved the same capabilities.
 
-## Background
+- [Darwin Gödel Machine](https://arxiv.org/abs/2505.22954) — empirically evaluated iterative self-modification for coding agents.
+- [AlphaEvolve](https://deepmind.google/blog/alphaevolve-a-gemini-powered-coding-agent-for-designing-advanced-algorithms/) — generate and evaluate algorithm candidates with automated scoring.
+- [SEAL: Self-Adapting Language Models](https://arxiv.org/abs/2506.10943) — model-generated self-edits for persistent adaptation.
+- [Reflexion](https://arxiv.org/abs/2303.11366) — use feedback stored in memory to improve subsequent attempts.
+- [MAP-Elites](https://arxiv.org/abs/1504.04909) — preserve diverse high-performing candidates rather than one winner.
+- [METR time horizons](https://metr.org/time-horizons/) — evaluate the length and difficulty of tasks AI agents can complete reliably.
 
-Conceived and architected by [Jyotiraditya](https://github.com/Jyotiraditya0709), an AI engineer in India. Built by Claude.
+The question is whether mechanisms like these can be connected through one persistent learning system so their outputs compound.
 
-License: see [`pyproject.toml`](pyproject.toml). To use or build on Tanishi, please open an issue first.
+## Get involved
 
----
+The most useful contribution is one that makes the idea more testable.
+
+- **Build:** help close the first complete task-to-verified-skill loop.
+- **Break:** find evaluation leakage, unreliable gains, memory poisoning, weak isolation, or rollback failures.
+- **Research:** propose an experiment that could falsify a core assumption.
+- **Review:** challenge the metrics, architecture, and safety boundaries.
+
+Start with the [repository](https://github.com/Jyotiraditya0709/tanishi-ai), open an [issue](https://github.com/Jyotiraditya0709/tanishi-ai/issues), or follow [Jyotiraditya](https://github.com/Jyotiraditya0709).
+
+## The end we are working toward
+
+Today, Tanishi begins as a personal intelligence: one that remembers, helps, and learns from experience.
+
+The long horizon is an intelligence that can discover capabilities its creators did not explicitly list, build better ways to test those capabilities, accelerate scientific and engineering work, and improve the machinery that produces the next improvement.
+
+Not a claim that we already know how to get there. A question worth building toward, with evidence at every step.
 
 <p align="center">
-  <a href="https://github.com/Jyotiraditya0709/tanishi-ai">⭐ Star the repo</a> ·
-  <a href="https://github.com/Jyotiraditya0709/tanishi-ai/issues">Open an issue</a> ·
-  <a href="https://github.com/Jyotiraditya0709">Follow the author</a>
+  <strong>One intelligence. A growing frontier. Every improvement has to prove itself.</strong>
 </p>
 
 <p align="center">
-  <em>If you like Tanishi, give her a ⭐. She checks.</em>
+  <a href="https://github.com/Jyotiraditya0709/tanishi-ai">Explore the repository</a> ·
+  <a href="https://github.com/Jyotiraditya0709/tanishi-ai/issues">Challenge the work</a> ·
+  <a href="https://github.com/Jyotiraditya0709">Follow the journey</a>
 </p>

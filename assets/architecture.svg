@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1320 780" width="1320" height="780" role="img" aria-label="Tanishi architecture" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+<title>Tanishi architecture</title>
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8FA6BF"/></marker><marker id="arrT" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5EEAD4"/></marker><marker id="arrA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#F5B971"/></marker><marker id="arrV" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#A5B4FC"/></marker><radialGradient id="glow" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#5EEAD4" stop-opacity="0.25"/><stop offset="100%" stop-color="#5EEAD4" stop-opacity="0"/></radialGradient></defs>
+<rect width="1320" height="780" rx="18" fill="#0B1622"/>
+<rect x="380" y="22" width="280" height="50" rx="12" fill="#12233A" stroke="#F5B971" stroke-width="1.5"/>
+<text x="520.0" y="52.0" text-anchor="middle" fill="#F5B971" font-size="16" font-weight="650" letter-spacing="0.6">HUMAN AUTHORITY</text>
+<line x1="520" y1="72" x2="520" y2="96" stroke="#F5B971" stroke-width="1.6" marker-end="url(#arrA)"/>
+<rect x="380" y="98" width="280" height="58" rx="12" fill="#12233A" stroke="#F5B971" stroke-width="1.5"/>
+<text x="520.0" y="122.0" text-anchor="middle" fill="#E8EEF5" font-size="16" font-weight="650" letter-spacing="0.6">CONSTITUTION</text>
+<text x="520.0" y="143.0" text-anchor="middle" fill="#8FA6BF" font-size="12.5">rules she cannot edit</text>
+<rect x="28" y="190" width="984" height="570" rx="22" fill="#0E1B2D" stroke="#2C4A6B" stroke-width="1.5"/>
+<text x="54" y="222" text-anchor="start" fill="#5EEAD4" font-size="13" font-weight="700" letter-spacing="4">TANISHI</text>
+<line x1="520" y1="156" x2="520" y2="230" stroke="#F5B971" stroke-width="1.6" marker-end="url(#arrA)"/>
+<rect x="350" y="232" width="340" height="56" rx="12" fill="#12233A" stroke="#2C4A6B" stroke-width="1.5"/>
+<text x="520.0" y="255.0" text-anchor="middle" fill="#E8EEF5" font-size="16" font-weight="650" letter-spacing="0.6">TANISHI PRIME</text>
+<text x="520.0" y="276.0" text-anchor="middle" fill="#8FA6BF" font-size="12.5">the one voice · plans and routes work</text>
+<line x1="520" y1="288" x2="520" y2="306" stroke="#8FA6BF" stroke-width="1.6" marker-end="url(#arr)"/>
+<rect x="290" y="308" width="460" height="58" rx="12" fill="#12233A" stroke="#2C4A6B" stroke-width="1.5"/>
+<text x="520.0" y="332.0" text-anchor="middle" fill="#E8EEF5" font-size="16" font-weight="650" letter-spacing="0.6">COGNITIVE SUBSTRATE</text>
+<text x="520.0" y="353.0" text-anchor="middle" fill="#8FA6BF" font-size="12.5">working state · planning · attention · model routing</text>
+<line x1="520" y1="366" x2="520" y2="394" stroke="#8FA6BF" stroke-width="1.6" marker-end="url(#arr)"/>
+<ellipse cx="520" cy="450" rx="260" ry="96" fill="url(#glow)"/>
+<rect x="350" y="396" width="340" height="110" rx="12" fill="#12233A" stroke="#5EEAD4" stroke-width="1.5"/>
+<text x="520.0" y="436.0" text-anchor="middle" fill="#5EEAD4" font-size="20" font-weight="650" letter-spacing="0.6">CORE STATE</text>
+<text x="520.0" y="457.0" text-anchor="middle" fill="#8FA6BF" font-size="12.5">identity · memory · goals · beliefs</text>
+<text x="520.0" y="478.0" text-anchor="middle" fill="#8FA6BF" font-size="12.5">predictions · capabilities · lineage</text>
+<rect x="50" y="392" width="270" height="64" rx="12" fill="#12233A" stroke="#2C4A6B" stroke-width="1.5"/>
+<text x="185.0" y="419.0" text-anchor="middle" fill="#E8EEF5" font-size="14.5" font-weight="650" letter-spacing="0.6">PERSONAL MODELS</text>
+<text x="185.0" y="440.0" text-anchor="middle" fill="#8FA6BF" font-size="12.5">self · world · memory</text>
+<line x1="322" y1="424" x2="348" y2="424" stroke="#5EEAD4" stroke-width="1.3" marker-end="url(#arrT)" marker-start="url(#arrT)"/>
+<rect x="50" y="486" width="270" height="64" rx="12" fill="#12233A" stroke="#2C4A6B" stroke-width="1.5"/>
+<text x="185.0" y="513.0" text-anchor="middle" fill="#E8EEF5" font-size="14.5" font-weight="650" letter-spacing="0.6">CAPABILITY FRONTIER</text>
+<text x="185.0" y="534.0" text-anchor="middle" fill="#8FA6BF" font-size="12.5">strengths · gaps · next capabilities</text>
+<line x1="322" y1="518" x2="348" y2="490" stroke="#5EEAD4" stroke-width="1.3" marker-end="url(#arrT)" marker-start="url(#arrT)"/>
+<rect x="50" y="580" width="270" height="64" rx="12" fill="#12233A" stroke="#2C4A6B" stroke-width="1.5"/>
+<text x="185.0" y="607.0" text-anchor="middle" fill="#E8EEF5" font-size="14.5" font-weight="650" letter-spacing="0.6">RESEARCH ENGINE</text>
+<text x="185.0" y="628.0" text-anchor="middle" fill="#8FA6BF" font-size="12.5">hypotheses · experiments · replication</text>
+<line x1="322" y1="612" x2="348" y2="490" stroke="#5EEAD4" stroke-width="1.3" marker-end="url(#arrT)" marker-start="url(#arrT)"/>
+<rect x="720" y="392" width="270" height="64" rx="12" fill="#12233A" stroke="#2C4A6B" stroke-width="1.5"/>
+<text x="855.0" y="419.0" text-anchor="middle" fill="#E8EEF5" font-size="14.5" font-weight="650" letter-spacing="0.6">INDEPENDENT EVALUATION</text>
+<text x="855.0" y="440.0" text-anchor="middle" fill="#8FA6BF" font-size="12.5">Arena · held-out tests · verifiers</text>
+<line x1="718" y1="424" x2="692" y2="424" stroke="#5EEAD4" stroke-width="1.3" marker-end="url(#arrT)" marker-start="url(#arrT)"/>
+<rect x="720" y="486" width="270" height="64" rx="12" fill="#12233A" stroke="#2C4A6B" stroke-width="1.5"/>
+<text x="855.0" y="513.0" text-anchor="middle" fill="#E8EEF5" font-size="14.5" font-weight="650" letter-spacing="0.6">CAUSAL ATTRIBUTION</text>
+<text x="855.0" y="534.0" text-anchor="middle" fill="#8FA6BF" font-size="12.5">did the change cause the gain?</text>
+<line x1="718" y1="518" x2="692" y2="490" stroke="#5EEAD4" stroke-width="1.3" marker-end="url(#arrT)" marker-start="url(#arrT)"/>
+<rect x="720" y="580" width="270" height="64" rx="12" fill="#12233A" stroke="#2C4A6B" stroke-width="1.5"/>
+<text x="855.0" y="607.0" text-anchor="middle" fill="#E8EEF5" font-size="14.5" font-weight="650" letter-spacing="0.6">EVOLUTION + GENOME</text>
+<text x="855.0" y="628.0" text-anchor="middle" fill="#8FA6BF" font-size="12.5">candidates · lineage · selection</text>
+<line x1="718" y1="612" x2="692" y2="490" stroke="#5EEAD4" stroke-width="1.3" marker-end="url(#arrT)" marker-start="url(#arrT)"/>
+<line x1="450" y1="506" x2="450" y2="576" stroke="#8FA6BF" stroke-width="1.6" marker-end="url(#arr)"/>
+<line x1="590" y1="576" x2="590" y2="506" stroke="#5EEAD4" stroke-width="1.6" marker-end="url(#arrT)"/>
+<text x="440" y="546" text-anchor="end" fill="#8FA6BF" font-size="12" font-weight="400" letter-spacing="0" font-style="italic">experience</text>
+<text x="600" y="546" text-anchor="start" fill="#5EEAD4" font-size="12" font-weight="400" letter-spacing="0" font-style="italic">verified learning</text>
+<rect x="350" y="578" width="340" height="62" rx="12" fill="#12233A" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="520.0" y="604.0" text-anchor="middle" fill="#A5B4FC" font-size="16" font-weight="650" letter-spacing="0.6">LEARNING COMPILER</text>
+<text x="520.0" y="625.0" text-anchor="middle" fill="#8FA6BF" font-size="12.5">the single learning path</text>
+<line x1="520" y1="640" x2="520" y2="672" stroke="#8FA6BF" stroke-width="1.6" stroke-dasharray="4 4" marker-end="url(#arr)"/>
+<rect x="350" y="674" width="340" height="62" rx="12" fill="#12233A" stroke="#2C4A6B" stroke-width="1.5" stroke-dasharray="6 5"/>
+<text x="520.0" y="700.0" text-anchor="middle" fill="#8FA6BF" font-size="16" font-weight="650" letter-spacing="0.6">MODEL FOUNDRY</text>
+<text x="520.0" y="721.0" text-anchor="middle" fill="#8FA6BF" font-size="12.5">data · architecture · training · inference</text>
+<text x="702" y="708" text-anchor="start" fill="#8FA6BF" font-size="12" font-weight="400" letter-spacing="0" font-style="italic">long-term</text>
+<rect x="1052" y="236" width="244" height="524" rx="12" fill="#1A1A14" stroke="#F5B971" stroke-width="1.5" stroke-dasharray="7 5"/>
+<text x="1174.0" y="503.0" text-anchor="middle" fill="#E8EEF5" font-size="16" font-weight="650" letter-spacing="0.6"></text>
+<text x="1174" y="290" text-anchor="middle" fill="#F5B971" font-size="17" font-weight="700" letter-spacing="1.5">THE WARDEN</text>
+<text x="1174" y="336" text-anchor="middle" fill="#8FA6BF" font-size="13.5" font-weight="400" letter-spacing="0">external process</text>
+<text x="1174" y="366" text-anchor="middle" fill="#E8EEF5" font-size="13.5" font-weight="400" letter-spacing="0">signed policy</text>
+<text x="1174" y="396" text-anchor="middle" fill="#E8EEF5" font-size="13.5" font-weight="400" letter-spacing="0">every action checked</text>
+<text x="1174" y="426" text-anchor="middle" fill="#E8EEF5" font-size="13.5" font-weight="400" letter-spacing="0">promotion gated</text>
+<text x="1174" y="456" text-anchor="middle" fill="#E8EEF5" font-size="13.5" font-weight="400" letter-spacing="0">hash-chained audit</text>
+<text x="1174" y="486" text-anchor="middle" fill="#E8EEF5" font-size="13.5" font-weight="400" letter-spacing="0">off switch outside her</text>
+<path d="M 660 127 L 1174 127 L 1174 232" fill="none" stroke="#F5B971" stroke-width="1.6" marker-end="url(#arrA)"/>
+<text x="1000" y="118" text-anchor="middle" fill="#F5B971" font-size="12" font-weight="400" letter-spacing="0" font-style="italic">signed policy</text>
+<line x1="1050" y1="340" x2="1014" y2="340" stroke="#F5B971" stroke-width="1.6" marker-end="url(#arrA)"/>
+<text x="1032" y="330" text-anchor="middle" fill="#F5B971" font-size="11" font-weight="400" letter-spacing="0" font-style="italic">governs</text>
+<line x1="1050" y1="610" x2="1014" y2="610" stroke="#F5B971" stroke-width="1.6" marker-end="url(#arrA)"/>
+<text x="1032" y="600" text-anchor="middle" fill="#F5B971" font-size="11" font-weight="400" letter-spacing="0" font-style="italic">gates</text>
+</svg>
