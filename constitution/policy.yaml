@@ -1,0 +1,50 @@
+# Tanishi policy, v0. The Warden obeys this file ONLY while its detached signature
+# (policy.yaml.sig) verifies against the Warden's trusted public key. Edit this file,
+# then re-sign it:  python -m warden.scripts.sign_policy <path to this file>
+#
+# decision is one of: allow | ask | deny.  Unknown tools get `default` (deny).
+# tier is an advisory risk level (0 safe … 3 dangerous), used by later versions and the log.
+
+version: 1
+default: deny
+
+# Daily cap on Tanishi's own paid model spend, in USD. The Warden denies the 'paid_model'
+# pseudo-tool once today's spend plus the next call's estimate would exceed this.
+daily_spend_cap_usd: 2.0
+
+tools:
+  # --- read-only, safe ---
+  read_file:        {decision: allow, tier: 0, reason: "read a file"}
+  list_directory:   {decision: allow, tier: 0, reason: "list a directory"}
+  search_files:     {decision: allow, tier: 0, reason: "search files"}
+  get_time:         {decision: allow, tier: 0}
+  get_system_info:  {decision: allow, tier: 0}
+
+  # --- outbound reads: allowed, watched ---
+  web_search:       {decision: allow, tier: 1, reason: "search the web"}
+  fetch_webpage:    {decision: allow, tier: 1, reason: "read a public web page"}
+
+  # --- writes to her own data: allowed ---
+  log_expense:      {decision: allow, tier: 1}
+  remember:         {decision: allow, tier: 1}
+
+  # --- paid model use: allowed until the daily spend cap is hit (handled specially) ---
+  paid_model:       {decision: allow, tier: 1, reason: "paid model call, under the daily cap"}
+
+  # --- side effects on the world: ask the owner ---
+  write_file:       {decision: ask, tier: 2, reason: "writing a file changes the disk"}
+  run_command:      {decision: ask, tier: 3, reason: "a shell command can do anything"}
+  send_email:       {decision: ask, tier: 3, reason: "sending email leaves the machine"}
+  send_message:     {decision: ask, tier: 3}
+  browse_url:       {decision: ask, tier: 2, reason: "driving a browser can act on a site"}
+
+# Paths no tool may touch, whatever its rule. A file argument resolving under any of these
+# is denied. Keep the Warden, the constitution, the vaults, reality and the off switch here.
+out_of_bounds_paths:
+  - ~/.tanishi-keys
+  - ~/.tanishi-warden
+  - ~/.tanishi/KILL
+  - ~/Personal/tanishi-ai/constitution
+  - ~/Personal/tanishi-ai/tanishi/guard
+  - ~/Personal/tanishi-warden
+  - ~/Personal/tanishi-builder-vault

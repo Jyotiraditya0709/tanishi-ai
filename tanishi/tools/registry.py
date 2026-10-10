@@ -15,6 +15,7 @@ import asyncio
 import json
 import inspect
 import logging
+import os
 import time
 import uuid
 from typing import Any, Callable, Optional
@@ -23,11 +24,16 @@ from dataclasses import dataclass, field
 from tanishi.config import tool_params as tool_cfg
 from tanishi.core_state import predictions
 from tanishi.core_state.events import current_task, emit, redact
+from tanishi.guard import check as guard_check
 
 logger = logging.getLogger(__name__)
 
 # What the caller gets when a tool is refused because its tool_call event could not be written.
 EVENT_LOG_UNAVAILABLE = "Event log unavailable: the tool was not run."
+
+# The Warden gate (node W1), read once at import. Off unless TANISHI_GUARD is set, so tests and
+# dev runs need no Warden; production launchers set TANISHI_GUARD=1.
+_GUARD_ON = os.environ.get("TANISHI_GUARD", "").strip().lower() in ("1", "true", "on", "yes")
 
 
 def _record(kind: str, payload: dict, session_id: str | None) -> None:
@@ -154,7 +160,8 @@ class ToolRegistry:
             for tool in self.tools.values()
         ]
 
-    async def execute(self, tool_name: str, tool_input: dict) -> ToolResult:
+    async def execute(self, tool_name: str, tool_input: dict, actor: str = "tanishi",
+                      session_id: str | None = None) -> ToolResult:
         """
         Execute a tool by name with given input.
 
@@ -167,12 +174,29 @@ class ToolRegistry:
         refused before the tool ran (unknown name, approval missing or denied, no tool_call event) or
         cancelled says nothing about the tool. An unknown name, or a tool that needs approval when there is
         no approval callback, is not predicted at all; the other refused calls leave the prediction unscored.
+
+        When the gate is on (TANISHI_GUARD=1) the Warden is asked first, before all of the above. A deny
+        returns at once: no prediction, no events. An ask makes the call need approval, exactly like a
+        requires_approval tool. actor and session_id go to the Warden only; events keep the task's session.
         """
+        if _GUARD_ON:
+            if session_id is None:
+                session_id = current_task()[1]
+            # Off the event loop: a slow or hung Warden must not freeze the runtime (it times out and denies).
+            d = await asyncio.to_thread(guard_check, tool_name, tool_input or {},
+                                        actor=actor, session_id=session_id)
+            if d.decision == "deny":
+                return ToolResult(success=False, output="", tool_name=tool_name,
+                                  error=f"Warden denied {tool_name}: {d.reason}")
+            guard_ask = (d.decision == "ask")
+        else:
+            guard_ask = False
         task_id, session_id = current_task()
         ids = {"tool": tool_name, "call_id": uuid.uuid4().hex, "task_id": task_id}
         tool = self.tools.get(tool_name)
+        need_approval = tool is not None and (guard_ask or tool.requires_approval)
         prediction_id = None
-        if tool is not None and not (tool.requires_approval and self._approval_callback is None):
+        if tool is not None and not (need_approval and self._approval_callback is None):
             prediction_id = _predict(tool_name)
         try:
             emit("tool_call", {**ids, "input": _jsonable(tool_input)}, session_id=session_id)
@@ -183,7 +207,7 @@ class ToolRegistry:
         result: ToolResult | None = None
         try:
             start = time.time()
-            result = await self._refuse(tool_name, tool, tool_input, start)
+            result = await self._refuse(tool_name, tool, tool_input, start, need_approval)
             if result is None:
                 result = await self._run(tool, tool_input, start)
                 _resolve(prediction_id, result.success, round(result.execution_time_ms, 1))
@@ -201,7 +225,7 @@ class ToolRegistry:
                 }, session_id)
 
     async def _refuse(self, tool_name: str, tool: ToolDefinition | None, tool_input: dict,
-                      start: float) -> ToolResult | None:
+                      start: float, need_approval: bool) -> ToolResult | None:
         """The refusal for a call that must not reach the tool (unknown name, approval missing or denied), else None."""
         if tool is None:
             return ToolResult(
@@ -212,7 +236,7 @@ class ToolRegistry:
             )
 
         # Check if approval needed (fail-closed: no callback => deny)
-        if tool.requires_approval:
+        if need_approval:
             if self._approval_callback is None:
                 elapsed = (time.time() - start) * 1000
                 return ToolResult(
