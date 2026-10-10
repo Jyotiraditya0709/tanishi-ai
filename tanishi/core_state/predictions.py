@@ -22,6 +22,7 @@ import math
 import sqlite3
 import statistics
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -45,6 +46,18 @@ HISTORY = 50
 
 class AlreadyResolvedError(ValueError):
     """resolve() was called on a prediction that has already been scored."""
+
+
+# Called as hook(prediction_id, expected) after a resolution commits. SUB4 keeps its Self Model fresh this way.
+_resolve_hooks: list[Callable[[str, Any], None]] = []
+
+
+def on_resolve(hook: Callable[[str, Any], None]) -> None:
+    """Register `hook(prediction_id, expected)` to run after each resolve() commits. Registering twice is a no-op.
+
+    A hook that raises is logged (exception type only); the resolution stands and its score is still returned."""
+    if hook not in _resolve_hooks:
+        _resolve_hooks.append(hook)
 
 
 def _now() -> str:
@@ -176,6 +189,11 @@ def resolve(prediction_id: str, actual: dict) -> float:
     task_id, session_id = current_task()
     _emit(RESOLVE_EVENT, {"id": prediction_id, "about": about, "actual": json.loads(actual_text),
                           "score": score, "task_id": task_id}, session_id)
+    for hook in _resolve_hooks:
+        try:
+            hook(prediction_id, expected)
+        except Exception as e:  # noqa: BLE001 - the ledger row is committed; a listener must not hide that
+            logger.warning("resolve hook failed: %s", type(e).__name__)
     return score
 
 
