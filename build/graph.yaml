@@ -220,6 +220,10 @@ nodes:
       These fixes are also Builder Arena tasks BA-01 to BA-06, so every one is solved by 2-3 competing agents.
     acceptance:
       - BA-01 to BA-06 merged, each passing its hidden tests in the builder vault.
+      - Frontier candidates (AR3) run sandboxed, so they cannot write outside their scratch dir, cannot read the task
+        store, its salt or its verifiers, and cannot read the traces directory (AR3 RT-2, RT-3; OBS1 trace leakage).
+      - The CLI and the Frontier service run with python -P, so a module in the current directory cannot shadow
+        the standard library.
     notes: See build/arena/tasks.yaml for the six task statements.
 
   # ---------------------------------------------------------------- T0 · Core State
@@ -541,6 +545,27 @@ nodes:
     acceptance:
       - Resolving predictions updates capabilities.calibration_error for the capability tagged on the prediction.
       - The router can read ability and calibration for a capability (used by SUB3 later).
+
+  - id: SUB5
+    title: OpenAI as a second cloud provider
+    tier: T0
+    pillar: substrate
+    branch: agent/substrate
+    owner: swarm
+    protected: false
+    size: M
+    depends_on: [SUB3]
+    goal: >-
+      Tanishi can think with OpenAI models as well as Claude and local Ollama models, so no single provider is a
+      single point of failure. The router picks among all three by need, privacy and cost.
+    files: [tanishi/substrate/providers/openai_provider.py, tests/substrate/test_openai_provider.py]
+    acceptance:
+      - OpenAI chat models with tool calling are available through the router; model ids come from tanishi/config/models.py only.
+      - The key is read from OPENAI_API_KEY only and never appears in events, traces, logs or errors.
+      - If one cloud provider fails (bad key, disabled organization, outage), the router falls back to the other, then to local, and the event says why.
+      - Personal steps still stay local, and every OpenAI call goes through the Warden spend check like Claude calls.
+      - Tool calls behave the same whichever provider ran the step (same ToolRegistry, same approval and Warden gate).
+      - The openai Python package may be added as a dependency for this node (or call the HTTP API through httpx).
 
   # ---------------------------------------------------------------- T0 · Observability
 
