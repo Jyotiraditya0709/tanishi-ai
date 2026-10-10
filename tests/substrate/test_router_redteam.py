@@ -74,7 +74,6 @@ def test_b1_route_has_an_async_entry_that_keeps_the_loop_alive(warden):
 # --- B2 · a malformed "rule" flag silently switches the privacy rule off ---------------------------------------
 
 
-@BREAK
 @pytest.mark.parametrize("flag", [None, 0, "", []])
 def test_b2_only_a_real_false_switches_the_personal_rule_off(gate_off, flag):
     """personal_local_only=None (an unset config value) or 0 is falsy, so `context.personal_local_only` is False and a

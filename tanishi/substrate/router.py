@@ -2,7 +2,8 @@
 
 Rules, in order (decision 0020):
 
-1. A personal step stays local while the rule is on (`personal_local_only`, default on). The local model has no
+1. A personal step stays local while the rule is on (`personal_local_only`, default on; only the bool `False`
+   switches it off, so an unset or malformed value never fails open). The local model has no
    tools, so a personal step that needs tools is refused, and so is a personal step when no local model is up.
    It never falls through to the cloud, and it never asks the Warden to spend.
 2. Every other step goes to a paid Claude model, the simple or the complex one by size. This replaces
@@ -55,7 +56,7 @@ class RouteContext:
     needs_tools: bool = False
     personal: bool = False
     local_up: bool = True  # a local model is reachable; probing for it is the caller's job
-    personal_local_only: bool = True  # False switches the "personal stays local" rule off
+    personal_local_only: bool = True  # only the bool False switches the rule off; None, 0, "" etc. keep it on
 
 
 @dataclass(frozen=True)
@@ -90,16 +91,17 @@ def route(step: Step, context: RouteContext) -> RouteDecision:
     text = step.description
     if not isinstance(text, str):
         raise TypeError("step.description must be a str")
+    rule_on = context.personal_local_only is not False  # a privacy rule must not fail open on None or 0
     record: dict = {
         "step_id": step.id,
         "needs_tools": bool(context.needs_tools),
         "personal": bool(context.personal),
         "local_up": bool(context.local_up),
-        "personal_local_only": bool(context.personal_local_only),
+        "personal_local_only": rule_on,
         "guard_on": _GUARD_ON,
     }
 
-    if context.personal and context.personal_local_only:
+    if context.personal and rule_on:
         if context.needs_tools:
             return _refuse(record, "personal step needs tools but the local model has none; "
                                    "personal steps never go to the cloud", wait=False)
