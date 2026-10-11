@@ -1,5 +1,8 @@
 # SUB2 · where the implementation and the exam conflict
 
+**RESOLVED 2026-10-11** (human decision 1, tests round 2): the exam's `predictions()` helper now calls `migrate(conn)`
+before it reads. No assertion changed; `test_invariants_hold_for_random_scripts` passes. The text below is kept as history.
+
 ## `test_invariants_hold_for_random_scripts` fails before the loop runs
 
 35 of 36 exam tests pass. The property test fails at its first line, `before = {p["id"] for p in predictions()}`,

@@ -25,10 +25,11 @@ from typing import ClassVar
 import pytest
 
 from tanishi.config import models as M
-from tanishi.core_state import events, open_db
+from tanishi.core_state import events, migrate, open_db
+from tanishi.core_state import predictions as ledger
 from tanishi.substrate.router import RouteContext, RouteDecision, RouteRefused
 from tanishi.substrate.state import Step
-from tanishi.tools.registry import ToolResult
+from tanishi.tools.registry import ToolDefinition, ToolRegistry, ToolResult
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -124,6 +125,7 @@ class Tools:
 def predictions():
     conn = open_db()
     try:
+        migrate(conn)  # the property test reads before anything has run, on a fresh db
         rows = conn.execute("SELECT id, about, expected, confidence, actual, resolved_at FROM predictions "
                             "ORDER BY ts, rowid").fetchall()
     finally:
@@ -273,6 +275,47 @@ def test_an_act_step_writes_an_event_that_names_the_tool(loop):
     run(make(loop, model=Model([act("read_file", path="x")])))
     mine = [e for e in all_events() if e.kind not in LEDGER_KINDS and "read_file" in json.dumps(e.payload)]
     assert mine, "no loop event names the tool that was run"
+
+
+def test_a_failed_prediction_write_stops_the_loop_before_the_tool(loop, monkeypatch):
+    def broken(*args, **kwargs):
+        raise RuntimeError("ledger is down")
+
+    monkeypatch.setattr(ledger, "predict", broken)
+    tools, model = Tools(), Model(then=act("read_file", path="x"))
+    res = run(make(loop, model=model, tools=tools))
+    assert tools.calls == []
+    assert res.success is False
+    assert isinstance(res.stop_reason, str) and res.stop_reason and res.stop_reason != STOP_BUDGET
+    assert len(model.calls) < 10  # it stopped; it did not keep asking
+
+
+def test_a_failed_act_event_write_stops_the_loop_before_the_tool(loop, monkeypatch):
+    real_emit = events.emit
+
+    def emit(kind, payload=None, *args, **kwargs):
+        if kind not in LEDGER_KINDS and "read_file" in json.dumps(payload, default=str):
+            raise RuntimeError("event log is down")
+        return real_emit(kind, payload, *args, **kwargs)
+
+    monkeypatch.setattr(events, "emit", emit)
+    tools, model = Tools(), Model(then=act("read_file", path="x"))
+    res = run(make(loop, model=model, tools=tools))
+    assert tools.calls == []
+    assert res.success is False
+    assert isinstance(res.stop_reason, str) and res.stop_reason and res.stop_reason != STOP_BUDGET
+    assert len(model.calls) < 10
+
+
+def test_the_real_registry_gets_one_prediction_of_each_kind_per_act(loop):
+    registry = ToolRegistry()
+    registry.register(ToolDefinition(name="probe", description="probe", input_schema={"type": "object"},
+                                     handler=lambda: "ok"))
+    res = run(make(loop, model=Model([act("probe"), act("probe")], then="done"), tools=registry))
+    assert res.success is True
+    abouts = [p["about"] for p in predictions()]
+    assert sorted(abouts) == ["act:probe", "act:probe", "tool:probe", "tool:probe"]
+    assert all(p["resolved_at"] for p in predictions())
 
 
 def test_the_event_chain_still_verifies(loop):
