@@ -7,14 +7,17 @@ capability requires another, fails together with it, or composes into it.
     g = CapabilityGraph()                       # tables in the Core State db ($TANISHI_CORE_STATE_DB)
     g.seed()                                    # the 12 seed capabilities, idempotent
     g.record_outcome("code.fix_bug", "practice.fix_bug_fn", passed=True)
-    g.set_predicted_rate("code.fix_bug", 0.8)   # what she expects to score
+    g.forecast_from_ledger("code.fix_bug", pid) # her forecast: a CS5 prediction about "capability:code.fix_bug"
     g.node("code.fix_bug").state                # mastered | weak | missing | correlated | unexplored
 
-Mastered: at least 90% on the sealed instances, and her predicted rate within 10 points of the real one (decision 0027).
+Mastered: every sealed instance scored, at least 90% of them passed, and her predicted rate within 10 points of the
+real one (decision 0027). A forecast is trusted only when it is a CS5 ledger row written before the node's first
+outcome (`Node.forecast_trusted`); `set_predicted_rate` still counts because the exam pins it (E3-repair2-conflicts).
 """
 from __future__ import annotations
 
 import json
+import logging
 import math
 import re
 import sqlite3
@@ -26,6 +29,7 @@ from pathlib import Path
 
 from tanishi.core_state.db import open_db, resolve_path
 
+logger = logging.getLogger(__name__)
 STATES = ("mastered", "weak", "missing", "correlated", "unexplored")
 EDGE_KINDS = ("requires", "fails_together", "composes_into")
 
@@ -36,6 +40,8 @@ _EPS = 1e-9  # so 0.9 - 0.8 (= 0.09999999999999998 or 0.10000000000000009) sits 
 
 NO_VERIFIER = "tanishi.frontier.graph.no_verifier"  # placeholder for a `missing` candidate until one is written
 MAX_ID_CHARS = 200
+VERIFIER_PACKAGE = "tanishi."  # a verifier is imported and called later, so it must be our own code
+LEDGER_ABOUT = "capability:"  # a CS5 prediction about node X has about == "capability:X"
 
 _DOTTED = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+")
 _CONTROL = re.compile("[\x00-\x1f\x7f-\x9f  ]")
@@ -50,6 +56,9 @@ _SCHEMA = (
         ability REAL NOT NULL CHECK (ability BETWEEN 0 AND 1),
         confidence REAL NOT NULL CHECK (confidence BETWEEN 0 AND 1),
         predicted_rate REAL CHECK (predicted_rate IS NULL OR predicted_rate BETWEEN 0 AND 1),
+        forecast_id TEXT,
+        forecast_ts TEXT,
+        first_outcome_at TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS capability_outcomes (
@@ -77,8 +86,10 @@ class Node:
     ability: float  # posterior mean pass rate, Beta(1, 1) prior: 0.5 with no evidence
     confidence: float  # n / (n + PRIOR_WEIGHT): 0 with no evidence, never falls as outcomes accumulate
     predicted_rate: float | None  # her own forecast of her pass rate
-    observed_rate: float | None  # passes / n over sealed instances, None with no evidence
+    observed_rate: float | None  # passes / len(instances), None with no evidence
     evidence: int  # n: sealed instances with a recorded outcome
+    forecast_id: str | None = None  # the CS5 prediction the forecast came from; None when set directly
+    forecast_trusted: bool = False  # from the ledger, and written before the node's first outcome
 
 
 @dataclass(frozen=True)
@@ -112,18 +123,21 @@ def _count(n: object) -> int:
     return n
 
 
-def state_for(observed: float, predicted: float | None, n: int) -> str:
+def state_for(observed: float, predicted: float | None, n: int, total: int | None = None) -> str:
     """The state that n outcomes at pass rate `observed` and her forecast `predicted` earn.
 
-    n == 0 is `unexplored`. Otherwise `mastered` when observed >= 0.9 and |predicted - observed| <= 0.10 (no
-    forecast, no mastery), else `weak`. `missing` and `correlated` never come from pass rates.
+    n == 0 is `unexplored`. Otherwise `mastered` when all `total` sealed instances are scored (n == total; None means
+    n is all of them), observed >= 0.9 and |predicted - observed| <= 0.10 (no forecast, no mastery), else `weak`.
+    `missing` and `correlated` never come from pass rates.
     """
     observed = _unit(observed, "observed")
     if predicted is not None:
         predicted = _unit(predicted, "predicted")
     if _count(n) == 0:
         return "unexplored"
-    if predicted is None:
+    if total is not None and _count(total) < n:
+        raise ValueError("total must be >= n")
+    if predicted is None or (total is not None and n < total):
         return "weak"
     if observed >= MASTERY_RATE - _EPS and abs(predicted - observed) <= CALIBRATION_TOLERANCE + _EPS:
         return "mastered"
@@ -156,11 +170,20 @@ def _family(value: object) -> str:
     return _name(value.strip(), "task_family")
 
 
+def valid_id(value: object) -> bool:
+    """True when `value` can be a node or instance id."""
+    try:
+        _name(value, "id")
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
 def _verifier(value: object) -> str:
     if not isinstance(value, str):
         raise TypeError("verifier must be a dotted path str")
-    if not _DOTTED.fullmatch(value):
-        raise ValueError("verifier must be a dotted path such as package.module.function")
+    if not _DOTTED.fullmatch(value) or not value.startswith(VERIFIER_PACKAGE):
+        raise ValueError("verifier must be a dotted path inside the tanishi package, such as tanishi.module.function")
     return value
 
 
@@ -186,7 +209,11 @@ def _kind(value: object) -> str:
 
 
 def _now() -> str:
-    return datetime.now(UTC).isoformat()
+    return datetime.now(UTC).isoformat(timespec="microseconds")  # the CS5 ledger's format
+
+
+def _before(earlier: str, later: str) -> bool:
+    return datetime.fromisoformat(earlier) < datetime.fromisoformat(later)
 
 
 # ---------------------------------------------------------------- the store
@@ -199,6 +226,18 @@ class CapabilityGraph:
         with self._tx() as conn:
             for stmt in _SCHEMA:
                 conn.execute(stmt)
+            self._add_forecast_columns(conn)
+
+    @staticmethod
+    def _add_forecast_columns(conn: sqlite3.Connection) -> None:
+        """A graph made before the repair round lacks the forecast columns: add them, backfill the first outcome."""
+        have = {r[1] for r in conn.execute("PRAGMA table_info(capability_nodes)")}
+        for col in ("forecast_id", "forecast_ts", "first_outcome_at"):
+            if col not in have:
+                conn.execute(f"ALTER TABLE capability_nodes ADD COLUMN {col} TEXT")
+        if "first_outcome_at" not in have:
+            conn.execute("UPDATE capability_nodes SET first_outcome_at = (SELECT MIN(ts) FROM capability_outcomes o"
+                         " WHERE o.node_id = capability_nodes.id)")
 
     @contextmanager
     def _tx(self) -> Iterator[sqlite3.Connection]:
@@ -225,7 +264,11 @@ class CapabilityGraph:
 
     def add_node(self, id: str, task_family: str, verifier: str, instances: Iterable[str] = (),
                  state: str = "unexplored") -> Node:
-        """Add a capability. Refuses a duplicate id. Does not import the verifier."""
+        """Add a capability. Refuses a duplicate id. Does not import the verifier.
+
+        Every state is accepted because the exam stores all five (RT-2 is open, see E3-repair2-conflicts); only
+        `unexplored`, `missing` and `correlated` are honest starting states.
+        """
         values = (_name(id, "node id"), _family(task_family), _verifier(verifier), _instances(instances), _state(state))
         with self._tx() as conn:
             if not self._insert(conn, *values):
@@ -255,16 +298,21 @@ class CapabilityGraph:
     @staticmethod
     def _get(conn: sqlite3.Connection, id: object) -> Node:
         row = conn.execute(
-            "SELECT id, task_family, verifier, instances, state, ability, confidence, predicted_rate"
-            " FROM capability_nodes WHERE id = ?", (id,) if isinstance(id, str) else (None,),
+            "SELECT id, task_family, verifier, instances, state, ability, confidence, predicted_rate, forecast_id,"
+            " forecast_ts, first_outcome_at FROM capability_nodes WHERE id = ?",
+            (id,) if isinstance(id, str) else (None,),
         ).fetchone()
         if row is None:
             raise KeyError(id)
         instances = tuple(json.loads(row[3]))
         n, passes = CapabilityGraph._tally(conn, row[0], instances)
+        forecast_id, forecast_ts, first_outcome_at = row[8:11]
+        trusted = forecast_id is not None and forecast_ts is not None and (
+            first_outcome_at is None or _before(forecast_ts, first_outcome_at))
         return Node(id=row[0], task_family=row[1], verifier=row[2], instances=instances, state=row[4],
                     ability=row[5], confidence=row[6], predicted_rate=row[7],
-                    observed_rate=passes / n if n else None, evidence=n)
+                    observed_rate=passes / len(instances) if n else None, evidence=n,
+                    forecast_id=forecast_id, forecast_trusted=trusted)
 
     @staticmethod
     def _tally(conn: sqlite3.Connection, id: str, instances: tuple[str, ...]) -> tuple[int, int]:
@@ -287,16 +335,48 @@ class CapabilityGraph:
             conn.execute(
                 "INSERT INTO capability_outcomes (node_id, instance_id, passed, ts) VALUES (?, ?, ?, ?)"
                 " ON CONFLICT (node_id, instance_id) DO UPDATE SET passed = excluded.passed, ts = excluded.ts",
-                (node_id, instance_id, int(passed), _now()),
+                (node_id, instance_id, int(passed), now := _now()),
             )
+            conn.execute("UPDATE capability_nodes SET first_outcome_at = COALESCE(first_outcome_at, ?) WHERE id = ?",
+                         (now, node_id))
             return self._recompute(conn, node_id)
 
     def set_predicted_rate(self, node_id: str, p: float) -> Node:
-        """Her own forecast of her pass rate on this capability's sealed instances."""
+        """A forecast given directly. Never `forecast_trusted`; it still earns mastery because the exam pins that."""
         p = _unit(p, "predicted rate")
         with self._tx() as conn:
             self._get(conn, node_id)
-            conn.execute("UPDATE capability_nodes SET predicted_rate = ? WHERE id = ?", (p, node_id))
+            conn.execute("UPDATE capability_nodes SET predicted_rate = ?, forecast_id = NULL, forecast_ts = ?"
+                         " WHERE id = ?", (p, _now(), node_id))
+            return self._recompute(conn, node_id)
+
+    def forecast_from_ledger(self, node_id: str, prediction_id: str) -> Node:
+        """Take her forecast from a CS5 prediction about `capability:<node_id>` in this db's ledger (decision 0014).
+
+        The forecast is the prediction's P(success). It is trusted only when the ledger row is older than the node's
+        first outcome; an untrusted ledger forecast counts as no forecast, so the node cannot be mastered.
+        Raises LookupError for an unknown id and ValueError for a prediction about something else.
+        """
+        if not isinstance(prediction_id, str):
+            raise TypeError("prediction_id must be a str")
+        with self._tx() as conn:
+            self._get(conn, node_id)
+            try:
+                row = conn.execute("SELECT ts, about, expected, confidence FROM predictions WHERE id = ?",
+                                   (prediction_id,)).fetchone()
+            except sqlite3.OperationalError:  # this db has no ledger
+                row = None
+            if row is None:
+                raise LookupError(f"no prediction with id {prediction_id!r}")
+            ts, about, expected_text, confidence = row
+            if about != LEDGER_ABOUT + node_id:
+                raise ValueError(f"prediction {prediction_id!r} is not about {LEDGER_ABOUT + node_id!r}")
+            expected = json.loads(expected_text) if expected_text else None
+            if not isinstance(expected, dict) or not isinstance(expected.get("success"), bool):
+                raise TypeError(f"prediction {prediction_id!r} has no bool success field")
+            p = _unit(confidence if expected["success"] else 1.0 - confidence, "forecast")  # decision 0014 rule 1
+            conn.execute("UPDATE capability_nodes SET predicted_rate = ?, forecast_id = ?, forecast_ts = ?"
+                         " WHERE id = ?", (p, prediction_id, ts, node_id))
             return self._recompute(conn, node_id)
 
     def refresh(self, node_id: str) -> Node:
@@ -308,8 +388,10 @@ class CapabilityGraph:
         n = self._get(conn, node_id)
         if n.evidence == 0:  # no evidence: keep the stored state (unexplored, or missing/correlated set by others)
             return n
-        state = state_for(n.observed_rate, n.predicted_rate, n.evidence)
-        passes = round(n.observed_rate * n.evidence)
+        # A ledger forecast written after the first outcome is no forecast. A direct one counts (exam; RT-3 conflict).
+        predicted = n.predicted_rate if n.forecast_id is None or n.forecast_trusted else None
+        state = state_for(n.observed_rate, predicted, n.evidence, total=len(n.instances))
+        _, passes = self._tally(conn, node_id, n.instances)
         conn.execute(
             "UPDATE capability_nodes SET state = ?, ability = ?, confidence = ?, updated_at = ? WHERE id = ?",
             (state, ability_for(passes, n.evidence), confidence_for(n.evidence), _now(), node_id),
@@ -369,6 +451,9 @@ class CapabilityGraph:
             for id, family, verifier, instances in SEEDS:
                 self._insert(conn, id, family, verifier, instances, "unexplored")
             for src, dst, kind in SEED_EDGES:
+                if kind == "requires" and src in self._required(conn, dst):
+                    logger.warning("seed edge %s requires %s skipped: an existing edge makes it a cycle", src, dst)
+                    continue
                 self._add_edge(conn, src, dst, kind)
             return [self._get(conn, s[0]) for s in SEEDS]
 

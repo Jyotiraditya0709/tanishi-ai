@@ -23,7 +23,6 @@ def _steps(prefix, text, family, k=3):
 
 # RT-1 (high) mastery on partial coverage ---------------------------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason="RT-1: one pass on 1 of 6 sealed instances earns mastered")
 def test_mastered_needs_every_sealed_instance_scored(g):
     g.seed()
     first = g.node("tool.system").instances[0]
@@ -112,7 +111,6 @@ def test_a_malformed_step_row_is_skipped_not_fatal():
 
 # RT-10 (low) verifier may name any module --------------------------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason="RT-10: any dotted path is accepted, e.g. os.system")
 def test_verifier_must_live_in_the_tanishi_package(g):
     with pytest.raises(ValueError):
         g.add_node("evil", task_family="f", verifier="os.system")
@@ -120,7 +118,6 @@ def test_verifier_must_live_in_the_tanishi_package(g):
 
 # RT-11 (low) seed() is all-or-nothing over a user's edge -----------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason="RT-11: a user requires-edge opposite to a seed edge makes seed() raise")
 def test_seed_survives_a_user_edge_that_conflicts_with_a_seed_edge(g):
     g.add_node("code.write_function", task_family="coding", verifier=VERIFIER)
     g.add_node("code.fix_bug", task_family="coding", verifier=VERIFIER)
