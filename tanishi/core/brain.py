@@ -11,6 +11,7 @@ This loop continues until Claude has a final text response.
 import asyncio
 import json
 import logging
+import os
 import re
 import threading
 import uuid
@@ -36,6 +37,12 @@ def _record(kind: str, payload: dict, session_id: str | None) -> None:
         emit(kind, payload, session_id=session_id)
     except Exception as e:  # noqa: BLE001 - never log the payload: it is the user's own text
         logger.warning("could not record %s event: %s", kind, type(e).__name__)
+
+
+def _substrate_enabled() -> bool:
+    """TANISHI_SUBSTRATE=1 sends think() through the SUB2 loop. Same test as `substrate.loop.enabled()`, read here
+    so that with the flag off think() never imports the substrate: flag off, nothing changes."""
+    return os.environ.get("TANISHI_SUBSTRATE", "").strip() == "1"
 
 
 @dataclass
@@ -247,7 +254,10 @@ class TanishiBrain:
         error = ""
         try:
             with task_scope(task_id, session_id):
-                response = await self._think(user_input, mood, style, extra_context)
+                if _substrate_enabled():
+                    response = await self._think_substrate(user_input, mood, style, extra_context)
+                else:
+                    response = await self._think(user_input, mood, style, extra_context)
             return response
         except BaseException as e:
             error = f"{type(e).__name__}: {e}"
@@ -266,7 +276,26 @@ class TanishiBrain:
 
     async def _think(self, user_input: str, mood: str, style: str, extra_context: str) -> BrainResponse:
         model = self._select_model(user_input)
+        system_prompt = self._system_prompt(user_input, mood, style, extra_context)
+        messages = self._build_messages(user_input)
 
+        if model == "claude":
+            response = await self._think_claude_with_tools(
+                system_prompt, messages, user_input=user_input
+            )
+        else:
+            response = await self._think_ollama(system_prompt, messages)
+
+        self.conversation_history.append(Message(role="user", content=user_input))
+        self.conversation_history.append(Message(role="assistant", content=response.content))
+
+        if self._response_ok_for_skill_learning(response):
+            self._schedule_skill_extraction(response)
+
+        return response
+
+    def _system_prompt(self, user_input: str, mood: str, style: str, extra_context: str) -> str:
+        """The persona with matching skills and the dream-cycle memories. Both think paths build it here."""
         skill_block = ""
         try:
             from tanishi.skills.skill_store import find_matching_skills, format_skills_for_context
@@ -298,27 +327,79 @@ class TanishiBrain:
         except Exception:
             pass
 
-        system_prompt = get_system_prompt(
+        return get_system_prompt(
             current_mode=mood,
             style=style,
             extra_context=merged_extra,
         )
-        messages = self._build_messages(user_input)
 
-        if model == "claude":
-            response = await self._think_claude_with_tools(
-                system_prompt, messages, user_input=user_input
+    async def _think_substrate(self, user_input: str, mood: str, style: str, extra_context: str) -> BrainResponse:
+        """The SUB2 reasoning loop, used instead of `_think` when TANISHI_SUBSTRATE=1.
+
+        A loop that cannot be built (a bad or missing program file, a broken substrate import) runs nothing, so this
+        call falls back to `_think` and writes a `loop_fallback` event with the reason. A loop that was built never
+        falls back, since it may already have acted: whatever it ends with is the reply."""
+        session_id = getattr(self, "_active_session_id", None)
+        session_id = session_id if isinstance(session_id, str) else None
+        system_prompt = self._system_prompt(user_input, mood, style, extra_context)
+        recent = self.conversation_history[-self.config.max_conversation_history:]
+        history = "\n".join(f"{m.role}: {m.content}" for m in recent if m.role in ("user", "assistant"))
+        personal = bool(getattr(self.config, "privacy_mode", False)) or classify_sensitivity(user_input) == "high"
+        try:
+            from tanishi.substrate import loop as substrate_loop
+            from tanishi.substrate import router
+
+            cognitive = substrate_loop.CognitiveLoop(
+                router, self.memory_manager, self.tool_registry,
+                substrate_loop.StepBudget(max_steps=self.max_tool_loops),
+                generate=self._substrate_generate(system_prompt),
+                context=f"Conversation so far:\n{history}" if history else "",
+                personal=personal, local_up=bool(getattr(self, "ollama_available", False)),
             )
-        else:
-            response = await self._think_ollama(system_prompt, messages)
-
+        except Exception as e:  # noqa: BLE001 - nothing ran yet, so the legacy path can take this call
+            _record("loop_fallback", {"reason": f"{type(e).__name__}: {e}"[:300]}, session_id)
+            return await self._think(user_input, mood, style, extra_context)
+        try:
+            result = await cognitive.run(user_input)
+        except Exception as e:  # noqa: BLE001 - run() reports its own failures; this is a last guard
+            result = substrate_loop.Result(content="I stopped before finishing (internal_error).", success=False,
+                                           stop_reason=substrate_loop.STOP_INTERNAL, steps=0,
+                                           detail=type(e).__name__)
+        error = ""
+        if not result.success:
+            error = f"loop stopped: {result.stop_reason}" + (f" ({result.detail})" if result.detail else "")
+        response = BrainResponse(content=result.content, model_used=f"substrate ({result.model_used or 'none'})",
+                                 tools_used=list(result.tools_used), error=error)
         self.conversation_history.append(Message(role="user", content=user_input))
         self.conversation_history.append(Message(role="assistant", content=response.content))
-
-        if self._response_ok_for_skill_learning(response):
+        if result.success and self._response_ok_for_skill_learning(response):
             self._schedule_skill_extraction(response)
-
         return response
+
+    def _substrate_generate(self, system_prompt: str) -> Callable:
+        """`generate(decision, prompt)` for the loop: the routed model, with the persona as the system prompt."""
+        from tanishi.substrate import router
+
+        async def generate(decision, prompt: str) -> str:
+            if decision.provider == router.LOCAL_PROVIDER:
+                resp = await self._think_ollama(system_prompt, [{"role": "user", "content": prompt}])
+                if resp.failed:
+                    raise RuntimeError(resp.error or "local model failed")
+                return resp.content
+            client = getattr(self, "claude_client", None)
+            if client is None:
+                raise RuntimeError("no Claude client configured")
+            resp = await asyncio.to_thread(
+                client.messages.create, model=decision.model_id, max_tokens=4096, system=system_prompt,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            try:  # errs high: the estimate assumes a full-length reply
+                router.report_spend(decision, router.estimate_cost(decision.model_id, prompt, resp.usage.input_tokens))
+            except Exception as e:  # noqa: BLE001 - the call is already paid; reporting must not lose the reply
+                logger.warning("could not report spend: %s", type(e).__name__)
+            return "\n".join(b.text for b in resp.content if hasattr(b, "text"))
+
+        return generate
 
     @staticmethod
     def _response_ok_for_skill_learning(response: BrainResponse) -> bool:
