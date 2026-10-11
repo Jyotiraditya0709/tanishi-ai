@@ -9,6 +9,7 @@ import itertools
 import random
 
 import pytest
+
 from tanishi.frontier import clustering, graph
 
 FIVE_STATES = ("mastered", "weak", "missing", "correlated", "unexplored")
