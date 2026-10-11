@@ -47,7 +47,6 @@ def _canary() -> str:
 
 
 @mac_only
-@pytest.mark.xfail(strict=True, reason="profile grants `network*`, which includes AF_UNIX connect to any path")
 def test_rt1_network_grant_reaches_unix_sockets_outside_scratch():
     """`(allow network* system-socket)` includes AF_UNIX connect to any path: ssh-agent, docker.sock, gpg-agent, any
     local daemon. A task that is "granted network" is granted the host's local IPC too, which defeats the file
@@ -135,7 +134,6 @@ def test_rt2_guarded_names_are_not_bypassed_by_changing_case(tmp_path):
 
 
 @mac_only
-@pytest.mark.xfail(strict=True, reason="_not_copied / is_guarded_name compare names case-sensitively")
 def test_rt2b_worktree_copy_keeps_case_variants_of_guarded_names(tmp_path):
     """Same bug in `_not_copied`: a checkout whose vault folder is spelled `Vault` is copied into the candidate's
     workdir, where it is plainly readable (the workdir is inside scratch, which the profile allows)."""
@@ -154,7 +152,6 @@ def test_rt2b_worktree_copy_keeps_case_variants_of_guarded_names(tmp_path):
 # --- RT-SB1-3 · the worktree copy brings the legacy databases and .git along -----------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="_not_copied drops only guarded names; *.db, *.sqlite and .git are copied")
 def test_rt3_worktree_copy_contains_databases_and_git_history(tmp_path):
     """CLAUDE.md: `data/db.sqlite` is the legacy conversation db. `_not_copied` drops only guarded *names*, so the
     candidate gets a copy of every `*.db`/`*.sqlite*` file and the whole `.git` of the checkout it was given (every
@@ -173,7 +170,6 @@ def test_rt3_worktree_copy_contains_databases_and_git_history(tmp_path):
     assert not leaked, f"copied into the candidate's workdir: {sorted(leaked)}"
 
 
-@pytest.mark.xfail(strict=True, reason="a read path is granted whole; only five guarded names are carved out")
 def test_rt3b_read_path_grants_whole_repo_including_legacy_db(tmp_path):
     """AR1 passes every `sys.path` entry as a read path, and the repo root is one. The profile guards five names;
     `data/db.sqlite` under the same root is readable, personal conversation text included."""
@@ -293,7 +289,6 @@ def _clear_flags_and_remove(path: Path) -> None:
 
 
 @mac_only
-@pytest.mark.xfail(strict=True, reason="_force_rmtree swallows EPERM; rollback then crashes or keeps the file")
 def test_rt6_immutable_flag_survives_rollback_and_close():
     """`chflags uchg` is allowed inside scratch. `_force_rmtree` swallows the failure, so `rollback()` leaves the
     candidate's file in place (and `_fill`'s mkdir raises FileExistsError), and `close()` leaves scratch on disk."""
@@ -359,7 +354,6 @@ def test_rt6b_deep_directory_tree_is_removed_by_close():
 # --- RT-SB1-7 · limits that the card promises but the code does not enforce ----------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="no process-count limit (known-bugs/sb1-sandbox-limits.md says so)")
 def test_rt7_fork_count_is_unbounded():
     """cpu/memory/wall are limited; process count is not. On macOS RLIMIT_NPROC is per user, so the sandbox must
     count the run's members itself (it already lists them every 0.1 s). 200 sleeping children are allowed here; a
@@ -384,7 +378,6 @@ def test_rt7_fork_count_is_unbounded():
     assert kids < 200, f"{kids} processes were started"
 
 
-@pytest.mark.xfail(strict=True, reason="no disk quota in scratch and no RLIMIT_FSIZE")
 def test_rt7b_scratch_disk_use_is_unbounded():
     """A candidate may write as much as the disk holds (200 MB here, in 0.3 s). `rollback` deletes it afterwards, but
     nothing stops a full disk during the run, which also breaks every other agent in the swarm on the machine."""
@@ -407,7 +400,6 @@ def test_rt7b_scratch_disk_use_is_unbounded():
 # --- RT-SB1-8 · the code Tanishi writes still runs outside the sandbox on the Arena's critical path ------------------
 
 
-@pytest.mark.xfail(strict=True, reason="AR2 run_python_tests execs candidate code in an unconfined verifier-stage process")
 def test_rt8_run_python_tests_runs_candidate_code_unconfined(tmp_path):
     """`tanishi/arena/practice/_common.py::_CodeProcess` starts `python -I _code_harness.py` with a plain Popen, in
     the AR1 verifier stage (which SB1 deliberately left unconfined). The harness `exec`s the candidate's *output

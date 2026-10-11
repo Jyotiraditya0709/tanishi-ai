@@ -2,7 +2,8 @@
 (by exec on macOS, where sandbox-exec is ARGV's head; as a supervising parent on Linux, see _supervise).
 
 Standard library only and run as a script, so nothing from `tanishi` is imported before the confinement holds.
-CONFIG is JSON: {"cpu": seconds, "landlock": null | {"rules": [[path, rights], ...], "deny_net": bool}}.
+CONFIG is JSON: {"cpu": seconds, "fsize": bytes, "nproc": null | processes of this user,
+"landlock": null | {"rules": [[path, rights], ...], "deny_net": bool}}.
 The environment is inherited as the sandbox built it. Any failure to confine exits 126 without running ARGV.
 """
 import json
@@ -33,11 +34,12 @@ _RIGHTS = {
 }
 _SYS_CREATE, _SYS_ADD, _SYS_RESTRICT = 444, 445, 446
 _PR_SET_NO_NEW_PRIVS, _PR_SET_SECCOMP, _SECCOMP_MODE_FILTER = 38, 22, 2
-# (audit arch, syscalls refused with EPERM, x32 bit) per machine
+# (audit arch, syscalls refused with EPERM, x32 bit, socket) per machine
 _SECCOMP = {
-    "x86_64": (0xC000003E, (90, 268, 452, 92, 94, 260), 0x40000000),  # chmod fchmodat fchmodat2 chown lchown fchownat
-    "aarch64": (0xC00000B7, (53, 452, 54), None),  # fchmodat fchmodat2 fchownat
+    "x86_64": (0xC000003E, (90, 268, 452, 92, 94, 260), 0x40000000, 41),  # chmod fchmodat fchmodat2 chown lchown fchownat
+    "aarch64": (0xC00000B7, (53, 452, 54), None, 198),  # fchmodat fchmodat2 fchownat
 }
+_AF_UNIX = 1
 
 
 def _landlock(cfg: dict) -> None:
@@ -92,12 +94,30 @@ def _landlock(cfg: dict) -> None:
     os.close(ruleset)
 
 
-def _seccomp(libc, machine: str) -> None:
-    import ctypes
+_BPF_LD, _BPF_JEQ, _BPF_JGE, _BPF_RET = 0x20, 0x15, 0x35, 0x06
+_SECCOMP_ALLOW, _SECCOMP_EPERM = 0x7FFF0000, 0x00050000 | 1
 
+
+def _seccomp_program(machine: str) -> list[tuple[int, int, int, int]]:
+    """The filter as (code, jt, jf, k): refuse chmod/chown by path, and socket(AF_UNIX), since Landlock before ABI 6
+    does not stop a connect() to a unix socket by path (a docker.sock, an ssh-agent). socketpair() stays allowed."""
     if machine not in _SECCOMP:
         raise OSError(f"no seccomp filter for {machine}")
-    arch, refused, x32 = _SECCOMP[machine]
+    arch, refused, x32, sys_socket = _SECCOMP[machine]
+    ld, jeq, jge, ret = _BPF_LD, _BPF_JEQ, _BPF_JGE, _BPF_RET
+    tests = ([(jge, x32)] if x32 else []) + [(jeq, nr) for nr in refused]
+    # 0 ld arch; 1 jeq arch ? 3 : 2; 2 ret EPERM (foreign ABI); 3 ld nr; 4.. tests -> EPERM;
+    # jeq socket ? next : ALLOW; ld args[0] (low word); jeq AF_UNIX ? EPERM : ALLOW; ret ALLOW; ret EPERM
+    insns = [(ld, 0, 0, 4), (jeq, 1, 0, arch), (ret, 0, 0, _SECCOMP_EPERM), (ld, 0, 0, 0)]
+    n = len(tests)
+    for i, (code, k) in enumerate(tests):
+        insns.append((code, n - i + 3, 0, k))  # to the final EPERM, past the remaining tests and the socket check
+    insns += [(jeq, 0, 2, sys_socket), (ld, 0, 0, 16), (jeq, 1, 0, _AF_UNIX)]
+    return insns + [(ret, 0, 0, _SECCOMP_ALLOW), (ret, 0, 0, _SECCOMP_EPERM)]
+
+
+def _seccomp(libc, machine: str) -> None:
+    import ctypes
 
     class Insn(ctypes.Structure):
         _fields_ = [("code", ctypes.c_uint16), ("jt", ctypes.c_uint8), ("jf", ctypes.c_uint8), ("k", ctypes.c_uint32)]
@@ -105,15 +125,7 @@ def _seccomp(libc, machine: str) -> None:
     class Prog(ctypes.Structure):
         _fields_ = [("len", ctypes.c_ushort), ("filter", ctypes.POINTER(Insn))]
 
-    ld, jeq, jge, ret = 0x20, 0x15, 0x35, 0x06
-    allow, eperm = 0x7FFF0000, 0x00050000 | 1
-    tests = ([(jge, x32)] if x32 else []) + [(jeq, nr) for nr in refused]
-    # 0 ld arch; 1 jeq arch ? 3 : 2; 2 ret EPERM (foreign ABI); 3 ld nr; 4.. tests -> EPERM; ret ALLOW; ret EPERM
-    insns = [(ld, 0, 0, 4), (jeq, 1, 0, arch), (ret, 0, 0, eperm), (ld, 0, 0, 0)]
-    n = len(tests)
-    for i, (code, k) in enumerate(tests):
-        insns.append((code, n - i, 0, k))  # to the final EPERM, past the remaining tests and the ALLOW
-    insns += [(ret, 0, 0, allow), (ret, 0, 0, eperm)]
+    insns = _seccomp_program(machine)
     arr = (Insn * len(insns))(*[Insn(*x) for x in insns])
     prog = Prog(len(insns), arr)
     if libc.prctl(_PR_SET_SECCOMP, _SECCOMP_MODE_FILTER, ctypes.byref(prog), 0, 0) != 0:
@@ -179,6 +191,11 @@ def main() -> None:
         cpu = int(cfg["cpu"])
         _limit(resource.RLIMIT_CPU, cpu, cpu + 1)  # SIGXCPU at the soft limit, SIGKILL one second later
         _limit(resource.RLIMIT_CORE, 0, 0)
+        fsize = int(cfg["fsize"])
+        _limit(resource.RLIMIT_FSIZE, fsize, fsize)  # a longer write fails with EFBIG (Python ignores SIGXFSZ)
+        if cfg.get("nproc"):  # per user, so the caller adds the run's share to what the user already has
+            nproc = int(cfg["nproc"])
+            _limit(resource.RLIMIT_NPROC, nproc, nproc)
         if cfg.get("landlock"):
             _landlock(cfg["landlock"])
     except Exception as e:  # noqa: BLE001 - never run the candidate unconfined

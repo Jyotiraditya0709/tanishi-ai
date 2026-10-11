@@ -43,6 +43,7 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+import tanishi
 from tanishi.arena.task import Task, TaskBrief
 from tanishi.arena.verifiers import (
     CandidateFault,
@@ -248,8 +249,13 @@ def _isolated_attempt(task: Task, candidate: str, seed: int, executor: Executor,
     verifier stage runs afterwards, unconfined, in the same home, once every executor process is dead.
     """
     limit = STARTUP_TIMEOUT_S + task.timeout_s + 5  # the runner's own deadlines bite first; these are a backstop
+    # trusted=True: this stage runs the caller's executor and the task's setup, code the system wrote, and it needs
+    # the host interpreter and import path (Docker on macOS cannot run either). Code a model writes is run by the
+    # verifiers that execute it (run_python_tests), always with trusted=False. An executor that runs a candidate's
+    # own code (a git ref) must not come through here as is: build/memory/open-problems/SB1-repair-conflicts.md.
     with Sandbox(network=NETWORK_TAG in task.tags, read_paths=_import_paths(), env_passthrough=passthrough,
-                 cpu_seconds=limit, wall_seconds=limit, memory_mb=EXECUTOR_MEMORY_MB, prefer_docker=False) as sb:
+                 cpu_seconds=limit, wall_seconds=limit, memory_mb=EXECUTOR_MEMORY_MB, prefer_docker=False,
+                 trusted=True) as sb:
         home = sb.home
         env = _prepare_home(home, passthrough)
         payload = {"brief": task.brief(), "setup": task.setup, "candidate": candidate, "seed": seed,
@@ -268,17 +274,34 @@ def _isolated_attempt(task: Task, candidate: str, seed: int, executor: Executor,
 
 
 def _import_paths() -> list[str]:
-    """The entries of sys.path an executor needs to import its code, minus any the sandbox refuses as too broad."""
+    """The entries of sys.path an executor needs to import its code, minus any the sandbox refuses as too broad.
+
+    Never the repo root (the folder holding the `tanishi` package) or the cwd: from those only their packages
+    (folders with an `__init__.py`) are granted, so `data/db.sqlite`, `.git` and the rest of the checkout stay
+    closed. The sandbox lets the candidate list the root's names, which the import needs."""
     out: list[str] = []
-    for p in sys.path:
-        p = os.path.realpath(p or os.getcwd())
-        if p in out or not os.path.exists(p):
+    cwd = os.path.realpath(os.getcwd())
+    repo = os.path.dirname(os.path.dirname(os.path.realpath(tanishi.__file__)))
+    for entry in sys.path:
+        p = os.path.realpath(entry or cwd)
+        if not os.path.exists(p):
             continue
-        try:
-            out.append(checked_read_path(p))
-        except (OSError, ValueError):
-            continue
+        for q in _packages_in(p) if p in (cwd, repo) else [p]:
+            if q in out:
+                continue
+            try:
+                out.append(checked_read_path(q))
+            except (OSError, ValueError):
+                continue
     return out
+
+
+def _packages_in(folder: str) -> list[str]:
+    try:
+        names = sorted(os.listdir(folder))
+    except OSError:
+        return []
+    return [os.path.join(folder, n) for n in names if os.path.isfile(os.path.join(folder, n, "__init__.py"))]
 
 
 def _prepare_home(home: Path, passthrough: tuple[str, ...]) -> dict[str, str]:

@@ -4,19 +4,30 @@
         result = sb.run([sys.executable, "-I", "candidate.py"])
         sb.rollback()  # the next run starts from a clean copy
 
+- **Who wrote the code.** `trusted=False` is for code a model wrote: it runs only on a backend that hides the user's
+  other processes (Docker; Landlock on Linux), and on macOS without Docker the constructor raises instead of falling
+  back to sandbox-exec, which cannot keep another process's environment (keys) from a candidate. `trusted=True` is
+  for code the system itself wrote. Unset keeps the old choice (sandbox-exec allowed); callers that run candidate
+  code pass `trusted=False` explicitly.
 - **Scratch.** Each sandbox owns a fresh 0700 folder: `.home` (HOME, with `.tanishi` as TANISHI_HOME, the Core State
   db path and `tmp` as TMPDIR) and `.workdir` (the cwd). With `worktree=` the workdir is a *copy* of that checkout
-  without `.env`, `.env.*`, `vault/`, `builder_vault/`, `traces/` or `.ssh/` at any depth; the original is never
-  mounted, so a candidate cannot read or change the real checkout while it runs.
+  without `.git`, `.env*`, `*.db`, `*.sqlite*`, `vault/`, `builder_vault/`, `traces/` or `.ssh/` at any depth and in
+  any letter case; the original is never mounted, so a candidate cannot read or change the real checkout.
 - **Environment.** Built, not inherited: PATH, LANG, the variables above and the names in `env_passthrough`.
-- **Confinement.** Default-deny (see backends.py): the interpreter, system libraries and `read_paths` are readable,
-  scratch is writable, nothing else is reachable. No network unless `network=True`.
+- **Confinement.** Default-deny (see backends.py): the interpreter, system libraries and `read_paths` are readable
+  (minus guarded and database names inside them), scratch is writable, nothing else is reachable; the folder holding
+  a read path may be listed, not read. No network unless `network=True`, and never a unix socket by path.
 - **Limits.** `cpu_seconds` (RLIMIT_CPU, which the candidate cannot raise), `memory_mb` (resident memory of every
-  process of the run, polled; RLIMIT_AS is not enforced on macOS) and `wall_seconds`. All three are required to be
-  finite and positive: "no limit" cannot be asked for.
+  process of the run, polled; RLIMIT_AS is not enforced on macOS) and `wall_seconds`, all required to be finite and
+  positive: "no limit" cannot be asked for. `max_processes` (a fork past it fails; more live processes than that
+  stops the run) and `max_disk_mb` (a file larger than that cannot be written; more new bytes in scratch than that
+  stops the run).
 - **Ending.** A run ends when its first process exits; anything it left running is killed then, even if it called
-  setsid (macOS: the kernel names the processes under this sandbox's profile; Linux: the launcher is a subreaper). `rollback()` kills, wipes scratch and recreates it (and the worktree copy); leaving the
-  `with` block kills and deletes scratch, even when the caller raised.
+  setsid (macOS: the kernel names the processes under this sandbox's profile; Linux: the launcher is a subreaper).
+  `rollback()` kills, clears file flags and permissions in scratch, wipes it and recreates it (and the worktree copy);
+  leaving the `with` block kills and deletes scratch, even when the caller raised.
+- **One script.** `run_python(script, *, stdin, timeout_s)` runs Python source a model wrote in a fresh untrusted
+  sandbox and returns its returncode and clipped output (L1's Learning Compiler; decision 0025).
 """
 from __future__ import annotations
 
@@ -41,6 +52,7 @@ from tanishi.sandbox import backends
 
 OUTPUT_LIMIT = 8 * 1024 * 1024  # bytes kept per stream; the rest is read and dropped so the candidate never blocks
 POLL_S = 0.1
+DISK_POLL_S = 0.5  # how often the watchdog adds up scratch
 _LAUNCH = str(Path(__file__).with_name("_launch.py"))
 _RESERVED = frozenset({"HOME", "TANISHI_HOME", "TANISHI_CORE_STATE_DB", "TMPDIR"})
 _VAR_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -48,7 +60,7 @@ _VAR_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 @dataclass(frozen=True)
 class SandboxResult:
-    """What one run did. `limit` is "wall" or "memory" when the sandbox killed it for that, else None."""
+    """What one run did. `limit` is "wall", "memory", "processes" or "disk" when the sandbox killed it for that."""
 
     returncode: int
     stdout: str
@@ -71,10 +83,16 @@ class Sandbox:
 
     def __init__(self, *, worktree: str | os.PathLike | None = None, network: bool = False, cpu_seconds: float = 10,
                  memory_mb: float = 512, wall_seconds: float = 30, env_passthrough=(), prefer_docker: bool = True,
-                 read_paths=(), docker_image: str = backends.DOCKER_IMAGE) -> None:
+                 read_paths=(), docker_image: str = backends.DOCKER_IMAGE, trusted: bool | None = None,
+                 max_processes: int = 64, max_disk_mb: float = 128) -> None:
         self.cpu_seconds = _positive("cpu_seconds", cpu_seconds)
         self.memory_mb = _positive("memory_mb", memory_mb)
         self.wall_seconds = _positive("wall_seconds", wall_seconds)
+        self.max_processes = math.ceil(_positive("max_processes", max_processes))
+        self.max_disk_mb = _positive("max_disk_mb", max_disk_mb)
+        if trusted is not None and not isinstance(trusted, bool):
+            raise TypeError("trusted must be True, False or None")
+        self.trusted = trusted
         if isinstance(env_passthrough, (str, bytes)):
             raise TypeError("env_passthrough must be a list of variable names")
         self.env_passthrough = tuple(env_passthrough)
@@ -88,8 +106,9 @@ class Sandbox:
             if not self.worktree.is_dir():
                 raise ValueError(f"worktree {worktree} is not a directory")
         self.read_paths = tuple(checked_read_path(p) for p in read_paths)
+        self.list_paths = _listable_parents(self.read_paths)
         self.docker_image = docker_image
-        self.backend = backends.pick_backend(prefer_docker, self.network)
+        self.backend = backends.pick_backend(prefer_docker, self.network, trusted)
         self.scratch: Path | None = None
         self.home: Path | None = None
         self.workdir: Path | None = None
@@ -122,7 +141,7 @@ class Sandbox:
         self._fill()
 
     def close(self) -> None:
-        """Kill everything the candidate started and delete scratch."""
+        """Kill everything the candidate started and delete scratch. Raises if scratch could not be deleted."""
         if self.scratch is None:
             return
         try:
@@ -130,6 +149,8 @@ class Sandbox:
         finally:
             _force_rmtree(self.scratch)
             _force_rmtree(self._tagdir)
+        if self.scratch.exists():
+            raise RuntimeError(f"sandbox scratch {self.scratch} could not be deleted")
 
     def rollback(self) -> None:
         """Undo every run: kill its processes, wipe scratch, recreate HOME and the working copy from the original."""
@@ -137,6 +158,9 @@ class Sandbox:
         self._kill_all()
         for child in list(self.scratch.iterdir()):
             _force_rmtree(child)
+        left = sorted(p.name for p in self.scratch.iterdir())
+        if left:
+            raise RuntimeError(f"rollback could not wipe scratch: {left} remain")
         self._fill()
 
     def _fill(self) -> None:
@@ -149,6 +173,7 @@ class Sandbox:
             self.workdir.mkdir(mode=0o700)
         else:
             shutil.copytree(self.worktree, self.workdir, symlinks=True, ignore=_not_copied)
+        self._disk_base = _disk_use(self.scratch)
 
     def _check_open(self) -> None:
         if self.scratch is None or not self.scratch.exists():
@@ -169,36 +194,47 @@ class Sandbox:
 
     def popen(self, argv, *, cwd: str | os.PathLike | None = None, stdin=None, stdout=None, stderr=None,
               pass_fds=()) -> subprocess.Popen:
-        """Start a confined process (its own session) under the wall and memory watchdog; the caller waits for it.
-        `cwd` must lie inside scratch (default: the working copy)."""
+        """Start a confined process (its own session) under the limits watchdog; the caller waits for it.
+        `cwd` must lie inside scratch (default: the working copy). Under Docker, `pass_fds` may hold one descriptor,
+        and only with `stdout` left unset or DEVNULL: the container's stdout carries it."""
         self._check_open()
         argv = _checked_argv(argv)
+        pass_fds = tuple(pass_fds)
         where = Path(cwd).resolve() if cwd is not None else self.workdir
         if not where.is_relative_to(self.scratch):
             raise ValueError("cwd must be inside the sandbox's scratch folder")
         env = self.env()
         cpu = max(1, math.ceil(self.cpu_seconds))
+        fsize = math.ceil(self.max_disk_mb * 1024 * 1024)
         container = None
         if self.backend == "docker":
+            if pass_fds and (len(pass_fds) > 1 or stdout not in (None, subprocess.DEVNULL)):
+                raise ValueError("under Docker, pass_fds holds at most one descriptor and stdout must be DEVNULL")
             container = f"tanishi-sb-{self._token[:12]}-{len(self._containers)}"
             names = [k for k in env if k != "PATH"]
             cmd = backends.docker_argv(name=container, image=self.docker_image, scratch=str(self.scratch),
                                        cwd=str(where), env_names=names, read_paths=list(self.read_paths),
                                        network=self.network, cpu_seconds=cpu,
-                                       memory_mb=max(6, math.ceil(self.memory_mb)), argv=argv)
+                                       memory_mb=max(6, math.ceil(self.memory_mb)), argv=argv,
+                                       wall_seconds=math.ceil(self.wall_seconds) + 5,
+                                       max_processes=self.max_processes, max_disk_mb=math.ceil(self.max_disk_mb),
+                                       fds=pass_fds)
             env = {**os.environ, **env, "DOCKER_CONFIG": backends.docker_config_dir()}
             self._containers.append(container)
+            if pass_fds:
+                stdout, pass_fds = pass_fds[0], ()
         else:
-            cfg: dict = {"cpu": cpu, "landlock": None}
+            cfg: dict = {"cpu": cpu, "fsize": fsize, "nproc": _process_cap(self.max_processes), "landlock": None}
             if self.backend == "sandbox-exec":
-                profile = backends.darwin_profile(str(self.scratch), list(self.read_paths), self.network, self._tag)
+                profile = backends.darwin_profile(str(self.scratch), list(self.read_paths), self.network, self._tag,
+                                                  list(self.list_paths))
                 argv = [backends.SANDBOX_EXEC, "-p", profile, *argv]
             else:
-                cfg["landlock"] = {"rules": backends.landlock_rules(str(self.scratch), list(self.read_paths)),
-                                   "deny_net": not self.network}
+                rules = backends.landlock_rules(str(self.scratch), list(self.read_paths), list(self.list_paths))
+                cfg["landlock"] = {"rules": rules, "deny_net": not self.network}
             cmd = [sys.executable, "-I", "-S", _LAUNCH, json.dumps(cfg), *argv]
         proc = subprocess.Popen(cmd, cwd=where, env=env, stdin=stdin, stdout=stdout, stderr=stderr,
-                                pass_fds=tuple(pass_fds), start_new_session=True)
+                                pass_fds=pass_fds, start_new_session=True)
         self._procs.append(proc)
         self._watches[proc.pid] = _Watch(self, proc, container)
         return proc
@@ -256,6 +292,37 @@ class Sandbox:
         self._watches.clear()
 
 
+PYTHON_OUTPUT_LIMIT = 64 * 1024  # bytes of each stream run_python returns
+
+
+@dataclass(frozen=True)
+class PythonResult:
+    """What run_python's script did; `stdout` and `stderr` hold at most PYTHON_OUTPUT_LIMIT bytes of text each."""
+
+    returncode: int
+    stdout: str
+    stderr: str
+    timed_out: bool
+
+
+def run_python(script: str, *, stdin: str | bytes | None = None, timeout_s: float) -> PythonResult:
+    """Run `script` (Python source a model wrote, e.g. L1's generated skill test) as untrusted candidate code: never
+    `trusted=True`, no network, nothing of this machine readable but the interpreter. `stdin` is its standard input;
+    it is killed after `timeout_s` seconds. Raises SandboxUnavailable where no backend hides the user's other
+    processes (macOS without Docker). The script is a file in scratch, so its text is not on any command line."""
+    if not isinstance(script, str):
+        raise TypeError("script must be Python source text")
+    timeout_s = _positive("timeout_s", timeout_s)
+    with Sandbox(trusted=False, network=False, cpu_seconds=timeout_s, wall_seconds=timeout_s) as sb:
+        (sb.workdir / "script.py").write_text(script, encoding="utf-8")
+        res = sb.run([sys.executable, "-I", "script.py"], input=stdin if stdin is not None else b"")
+    return PythonResult(res.returncode, _clip(res.stdout), _clip(res.stderr), res.timed_out)
+
+
+def _clip(text: str) -> str:
+    return text.encode("utf-8")[:PYTHON_OUTPUT_LIMIT].decode("utf-8", errors="ignore")
+
+
 # --- helpers ------------------------------------------------------------------------------------------------------
 
 
@@ -269,9 +336,7 @@ def _checked_argv(argv) -> list[str]:
     return list(argv)
 
 
-def checked_read_path(p) -> str:
-    """A path the candidate may read: it must exist, and must not be /, the user's home, or a folder holding it."""
-    path = Path(p).resolve(strict=True)
+def _homes() -> set[Path]:
     homes = {Path.home().resolve()}
     try:
         import pwd
@@ -279,17 +344,39 @@ def checked_read_path(p) -> str:
         homes.add(Path(pwd.getpwuid(os.getuid()).pw_dir).resolve())
     except (ImportError, KeyError):
         pass
-    if path == Path(path.anchor) or any(h == path or h.is_relative_to(path) for h in homes):
+    return homes
+
+
+def _too_broad(path: Path) -> bool:
+    return path == Path(path.anchor) or any(h == path or h.is_relative_to(path) for h in _homes())
+
+
+def checked_read_path(p) -> str:
+    """A path the candidate may read: it must exist, must not be /, the user's home, or a folder holding it, and
+    must not be named like a guarded place or a database."""
+    path = Path(p).resolve(strict=True)
+    if _too_broad(path):
         raise ValueError(f"{p} is too broad to be readable by a candidate")
-    if backends.is_guarded_name(path.name):
-        raise ValueError(f"{p} is a guarded place and cannot be readable by a candidate")
+    if backends.is_refused_name(path.name):
+        raise ValueError(f"{p} is a guarded place or a database and cannot be readable by a candidate")
     return str(path)
+
+
+def _listable_parents(read_paths: tuple[str, ...]) -> tuple[str, ...]:
+    """The folders holding the read paths, so a granted package can be imported from them (Python lists the folder
+    on sys.path). Only names are listable there; never a home, a folder holding one, or /."""
+    out = []
+    for r in read_paths:
+        parent = Path(r).parent
+        if not _too_broad(parent) and str(parent) not in out and str(parent) not in read_paths:
+            out.append(str(parent))
+    return tuple(out)
 
 
 def _not_copied(directory: str, names: list[str]) -> list[str]:
     out = []
     for n in names:
-        if backends.is_guarded_name(n):
+        if backends.is_not_copied_name(n):
             out.append(n)
             continue
         try:
@@ -302,8 +389,78 @@ def _not_copied(directory: str, names: list[str]) -> list[str]:
     return out
 
 
+def _unlock(path: Path) -> None:
+    """Undo what a candidate can do to stop a delete: file flags (`chflags uchg`, `uappnd`) and folder permissions.
+    Links are not followed. The candidate's processes are dead by now, so nothing changes under us."""
+    chflags = getattr(os, "chflags", None)
+
+    def fix(p: str) -> None:
+        try:
+            st = os.lstat(p)
+        except OSError:
+            return
+        if chflags is not None and getattr(st, "st_flags", 0):
+            try:
+                chflags(p, 0, follow_symlinks=False)
+            except (OSError, NotImplementedError):
+                pass
+        if stat.S_ISDIR(st.st_mode) and stat.S_IMODE(st.st_mode) & 0o700 != 0o700:
+            try:
+                os.chmod(p, 0o700)
+            except OSError:
+                pass
+
+    if not path.exists() and not path.is_symlink():
+        return
+    fix(str(path))
+    for dirpath, dirnames, filenames in os.walk(path):
+        for n in [*dirnames, *filenames]:
+            fix(os.path.join(dirpath, n))
+        dirnames[:] = [d for d in dirnames if not os.path.islink(os.path.join(dirpath, d))]
+
+
+def _disk_use(path: Path) -> int:
+    """Bytes of disk the files under `path` take (allocated blocks, so a sparse file counts what it really uses)."""
+    total = 0
+    for dirpath, _dirnames, filenames in os.walk(path):
+        for n in filenames:
+            try:
+                st = os.lstat(os.path.join(dirpath, n))
+            except OSError:
+                continue
+            total += st.st_blocks * 512 if hasattr(st, "st_blocks") else st.st_size
+    return total
+
+
+def _process_cap(max_processes: int) -> int | None:
+    """RLIMIT_NPROC counts every process (Linux: thread) of the user, so the cap for a run is what the user has now
+    plus the run's share. None for root, which the kernel does not limit, or when the count cannot be taken."""
+    if not hasattr(os, "getuid") or os.getuid() == 0:
+        return None
+    uid = os.getuid()
+    count = 0
+    if sys.platform.startswith("linux"):
+        for name in os.listdir("/proc"):
+            if not name.isdigit():
+                continue
+            try:
+                with open(f"/proc/{name}/status") as f:
+                    fields = dict(line.split(":", 1) for line in f if ":" in line)
+                if int(fields["Uid"].split()[0]) == uid:
+                    count += int(fields["Threads"].strip())
+            except (OSError, KeyError, ValueError):
+                continue
+    else:
+        try:
+            out = subprocess.run(["ps", "-U", str(uid), "-o", "pid="], capture_output=True, timeout=10, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        count = sum(1 for line in out.stdout.splitlines() if line.strip())
+    return count + max_processes if count else None
+
+
 def _force_rmtree(path: Path) -> None:
-    """Delete a tree the candidate may have made hard to delete (chmod 000 folders)."""
+    """Delete a tree the candidate may have made hard to delete (immutable flags, chmod 000 folders)."""
 
     def fix(func, p, _exc):
         try:
@@ -314,6 +471,7 @@ def _force_rmtree(path: Path) -> None:
         except OSError:
             pass
 
+    _unlock(path)
     if path.is_symlink() or path.is_file():
         try:
             path.unlink()
@@ -366,7 +524,7 @@ class _Capture:
 
 
 class _Watch:
-    """Enforces the wall-time and memory limits of one process tree, from a thread."""
+    """Enforces the wall-time, memory, process-count and disk limits of one process tree, from a thread."""
 
     def __init__(self, sb: Sandbox, proc: subprocess.Popen, container: str | None) -> None:
         self.sb, self.proc, self.container = sb, proc, container
@@ -381,14 +539,26 @@ class _Watch:
 
     def _loop(self) -> None:
         cap_kb = self.sb.memory_mb * 1024
+        disk_cap = self.sb.max_disk_mb * 1024 * 1024
+        next_disk = time.monotonic()
         while self.proc.poll() is None:
-            if time.monotonic() >= self._deadline:
+            now = time.monotonic()
+            if now >= self._deadline:
                 self.timed_out, self.limit = True, "wall"
                 break
-            if self.container is None:
+            if self.container is None:  # Docker enforces memory and processes itself
                 procs = _processes(self.sb)
-                if sum(procs[p].rss_kb for p in _members(procs, {self.proc.pid})) > cap_kb:
+                members = _members(procs, {self.proc.pid})
+                if sum(procs[p].rss_kb for p in members) > cap_kb:
                     self.limit = "memory"
+                    break
+                if len(members) > self.sb.max_processes:
+                    self.limit = "processes"
+                    break
+            if now >= next_disk:
+                next_disk = now + DISK_POLL_S
+                if _disk_use(self.sb.scratch) - self.sb._disk_base > disk_cap:
+                    self.limit = "disk"
                     break
             time.sleep(POLL_S)
         else:
