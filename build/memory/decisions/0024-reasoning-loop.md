@@ -32,3 +32,26 @@ Date: 2026-10-11. Decided by: the SUB2 implementer, adopting the exam's assumpti
    persona as the system prompt, and reports spend through `router.report_spend` with an estimate that errs high.
 9. **Flag.** `enabled()` is `TANISHI_SUBSTRATE == "1"` (after strip), read per call. Flag off: `think()` runs `_think`
    exactly as before and never builds a loop.
+
+## Repair round (2026-10-11, human decisions on the red team's breaks and open questions)
+
+10. **Never raises.** Stop reasons gain `empty_reply` (blank or non-text reply), `timeout`, `cancelled` and
+    `internal_error` (a bug in the loop). Every run writes `loop_stop`. Cancellation is recorded and re-raised.
+    On `cancelled`, `timeout` and `internal_error` an act already predicted is resolved `{"success": false}`;
+    on `unrecorded` it stays unresolved (item 5).
+11. **Replies.** An act is exactly `{"action": {"tool": <listed tool>, "input": {...}}}`, bare or in a ```` ``` ```` /
+    ```` ```json ```` fence (any case), at most 100 000 chars and 32 deep. Anything else non-blank is the answer.
+    The old "malformed action, try again" note is gone.
+12. **Program v2** adds optional `wall_time_s` (a finite number > 0; default 300 when absent): the per-task wall-clock
+    budget.
+13. **Final answer-only step.** When the step budget is spent and the last pass acted, the model gets one more
+    deliberate with no tools (`needs_tools=False`). It does not count in `steps`; an act asked for there is not run
+    and the loop stops with `budget`.
+14. **Personal is sticky.** Memories from the loop's recall, or a tool result with `personal=True`, make every later
+    deliberate of the task `personal=True` in its `RouteContext`.
+15. **Calibration.** `act:` predictions carry `expected.capability = "planning"`; the registry's `tool:` predictions
+    are unchanged. Item 6 still holds; the two no longer share a capability.
+16. **Brain.** The flag is read without importing the substrate. Both paths build the system prompt with
+    `_system_prompt()`. A loop that cannot be built (bad or missing program, broken import) falls back to `_think`
+    for that call and writes `loop_fallback {"reason"}`; a loop that was built never falls back, since it may already
+    have acted.
