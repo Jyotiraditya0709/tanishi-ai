@@ -1,4 +1,4 @@
-# 0024 · The sandbox for candidate code (SB1)
+# 0025 · The sandbox for candidate code (SB1)
 
 Date: 2026-10-11. Decided by: the SB1 implementer, within the card and the tester's assumptions A1-A8.
 

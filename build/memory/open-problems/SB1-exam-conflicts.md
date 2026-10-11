@@ -1,5 +1,9 @@
 # SB1 · exam conflicts (written by the implementer; the human decides, no test was edited)
 
+**Status 2026-10-11: C1 RESOLVED.** The human decided the test keeps its assertions and changes only how the
+executor signals "started": it now writes `second_started` in its own home (`$HOME`, inside the sandbox scratch
+folder) and the parent polls `TMPDIR/tanishi-sandbox-*/home/second_started`. The test passes with RT-2 enforced.
+
 ## C1 · `tests/arena/test_redteam_ar1.py::test_partial_run_leaves_no_rows` cannot pass once RT-2 passes
 
 The test's executor signals "the second attempt has started" by writing `tmp_path / "second_started"`, a file
@@ -23,4 +27,4 @@ What I would do instead (AR1's tester, not me, should change the test):
 
 - A6: the candidate gets a *copy* of the worktree; the real checkout is never mounted or reset. "Reset" = the copy is
   thrown away and re-made (`rollback()`), and the guarded folders hash the same before and after.
-- A8: RT-2/RT-3 pass through AR1's `run()`: its executor stage runs in `Sandbox` (see decision 0024).
+- A8: RT-2/RT-3 pass through AR1's `run()`: its executor stage runs in `Sandbox` (see decision 0025).

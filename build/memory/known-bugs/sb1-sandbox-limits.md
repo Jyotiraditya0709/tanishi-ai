@@ -1,6 +1,6 @@
 # SB1 · sandbox limits (known, not fixed)
 
-Decision: `decisions/0024-sandbox.md`.
+Decision: `decisions/0025-sandbox.md`.
 
 - **Metadata is open.** `stat`/`exists` work on any path (macOS profile allows `file-read-metadata`; Landlock does
   not cover it). A candidate can probe whether a file exists and its size, not read it.
