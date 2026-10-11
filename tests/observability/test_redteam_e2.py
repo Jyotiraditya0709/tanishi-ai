@@ -79,7 +79,6 @@ def test_seed_ignored_by_scorer_is_not_confused_with_repeats():
 # ------------------------------------------------------------------ the 0.01 floor is not exact
 
 
-@pytest.mark.xfail(strict=True, reason="E2-RT-2: floating point makes the 'equal to the floor is not real' rule depend on level")
 def test_floor_boundary_does_not_depend_on_the_score_level():
     # The true gain is exactly 0.01 in decimal. Spelling both arms as decimals (0.31 vs 0.3) hits the float error.
     verdicts = {

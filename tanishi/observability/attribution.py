@@ -21,6 +21,9 @@ MIN_SEEDS = 3
 NOISE_MULTIPLE = 2.0
 # Scores are on a 0 to 1 scale. A gain must be larger than this to be real, even when the measured noise is 0.
 MIN_REAL_GAIN = 0.01
+# Float error makes a true +0.01 land a hair above or below the floor depending on the score level (0.31 - 0.30 >
+# 0.01, 0.71 - 0.70 is not). Comparing with this tolerance makes "equal to the floor is not real" exact (E2-RT-2).
+FLOOR_TOLERANCE = 1e-12
 
 
 @dataclass(frozen=True)
@@ -89,7 +92,7 @@ def is_real_gain(baseline: list[float], candidate: list[float], min_effect: floa
         real, reason = False, f"noise: effect {effect:.4g} <= {NOISE_MULTIPLE:g} x noise {measured:.4g}"
     elif min_effect is not None and effect <= min_effect:
         real, reason = False, f"too small: effect {effect:.4g} <= min_effect {min_effect:.4g}"
-    elif effect <= MIN_REAL_GAIN:
+    elif effect <= MIN_REAL_GAIN + FLOOR_TOLERANCE:
         real, reason = False, f"too small: effect {effect:.4g} <= smallest real gain {MIN_REAL_GAIN:g}"
     else:
         real, reason = True, f"real: effect {effect:.4g} > threshold {threshold:.4g}"
