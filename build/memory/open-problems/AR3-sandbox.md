@@ -1,5 +1,8 @@
 # AR3 · the candidate needs a sandbox (owner: SEC1, human decision 2026-10-10)
 
+**Status 2026-10-11: RT-2 and RT-3 fixed by SB1** (AR1's executor stage runs in `tanishi.sandbox`, decision 0024;
+xfail marks removed). The verifier/runner-patching point below is still open.
+
 Decided in the AR3 repair round: not built in AR3. Both proofs stay `xfail(strict=True)` in
 `tests/arena/test_redteam_ar3.py` until SEC1 lands; SEC1's fixer removes the marks.
 
