@@ -22,5 +22,8 @@ Open:
 Fixed:
 
 - [x] `record_run` needed an integer seed but `interleave` accepted any seeds. Both now take only a plain `int` (decision 0011, rule 10).
+- [x] The 0.01 floor depended on float error: a true +0.01 was real at about 60% of score levels (E2-RT-2). `is_real_gain`
+  now compares with `FLOOR_TOLERANCE` (1e-12), so a gain within 1e-12 of the floor is never real. Changed in the E2
+  repair round by human decision (decision 0028, rule 15); OBS3's tests pass unchanged.
 
 Red-team breaks: see `obs3-redteam-20261009.md`.

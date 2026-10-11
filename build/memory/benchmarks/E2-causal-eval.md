@@ -16,6 +16,19 @@ equal effect, 2 passenger genes (effect 0), independent Gaussian noise sigma on 
 
 Autoresearch v0's failure (+0.001 kept against ~0.1 noise): `verify_gain` accepts it in 0.5% of 200 trials.
 
+## Seed count (repair round, 2026-10-12)
+
+`causal` now needs at least 5 seeds (decision 0028, rule 8). Rate at which `verify_gain` accepts a change that does
+nothing (equal means, sigma 0.1):
+
+| seeds | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|
+| red team, 6000 trials | 2.0% | 0.7% | 0.37% | 0.07% |
+| E2 eval, 2000 trials | refused | refused | 0.55% | (0.5% at 6 seeds above, own setup) |
+
+3 seeds estimate the noise badly, so the 2 x noise bar is often too low. The table above (6 seeds) did not change
+after the repair round; it was re-run and gives the same numbers.
+
 Reading: credit to a passenger is rare (~1 in 200). The price is recall: a gene needs about 3 to 4 x the per-run
 noise before it is reliably found, because the noise bar is per-run sd, not a standard error (decision 0011, rule 1).
 More seeds do not lower that bar; they only steady it.
