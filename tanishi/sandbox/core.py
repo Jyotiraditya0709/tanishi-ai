@@ -8,15 +8,14 @@
   db path and `tmp` as TMPDIR) and `.workdir` (the cwd). With `worktree=` the workdir is a *copy* of that checkout
   without `.env`, `.env.*`, `vault/`, `builder_vault/`, `traces/` or `.ssh/` at any depth; the original is never
   mounted, so a candidate cannot read or change the real checkout while it runs.
-- **Environment.** Built, not inherited: PATH, LANG, the variables above, the names in `env_passthrough`, and a
-  marker the sandbox uses to find every process a run started.
+- **Environment.** Built, not inherited: PATH, LANG, the variables above and the names in `env_passthrough`.
 - **Confinement.** Default-deny (see backends.py): the interpreter, system libraries and `read_paths` are readable,
   scratch is writable, nothing else is reachable. No network unless `network=True`.
 - **Limits.** `cpu_seconds` (RLIMIT_CPU, which the candidate cannot raise), `memory_mb` (resident memory of every
   process of the run, polled; RLIMIT_AS is not enforced on macOS) and `wall_seconds`. All three are required to be
   finite and positive: "no limit" cannot be asked for.
-- **Ending.** A run ends when its first process exits; anything it left running is killed then, found by the marker
-  even if it called setsid. `rollback()` kills, wipes scratch and recreates it (and the worktree copy); leaving the
+- **Ending.** A run ends when its first process exits; anything it left running is killed then, even if it called
+  setsid (macOS: the kernel names the processes under this sandbox's profile; Linux: the launcher is a subreaper). `rollback()` kills, wipes scratch and recreates it (and the worktree copy); leaving the
   `with` block kills and deletes scratch, even when the caller raised.
 """
 from __future__ import annotations
@@ -40,11 +39,10 @@ from typing import Self
 
 from tanishi.sandbox import backends
 
-MARKER = "TANISHI_SANDBOX_RUN"
 OUTPUT_LIMIT = 8 * 1024 * 1024  # bytes kept per stream; the rest is read and dropped so the candidate never blocks
 POLL_S = 0.1
 _LAUNCH = str(Path(__file__).with_name("_launch.py"))
-_RESERVED = frozenset({"HOME", "TANISHI_HOME", "TANISHI_CORE_STATE_DB", "TMPDIR", MARKER})
+_RESERVED = frozenset({"HOME", "TANISHI_HOME", "TANISHI_CORE_STATE_DB", "TMPDIR"})
 _VAR_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
@@ -89,7 +87,7 @@ class Sandbox:
             self.worktree = Path(worktree).resolve(strict=True)
             if not self.worktree.is_dir():
                 raise ValueError(f"worktree {worktree} is not a directory")
-        self.read_paths = tuple(_checked_read_path(p) for p in read_paths)
+        self.read_paths = tuple(checked_read_path(p) for p in read_paths)
         self.docker_image = docker_image
         self.backend = backends.pick_backend(prefer_docker, self.network)
         self.scratch: Path | None = None
@@ -167,7 +165,6 @@ class Sandbox:
         tanishi_home = self.home / ".tanishi"
         env.update(HOME=str(self.home), TANISHI_HOME=str(tanishi_home),
                    TANISHI_CORE_STATE_DB=str(tanishi_home / "core_state.db"), TMPDIR=str(self.home / "tmp"))
-        env[MARKER] = self._token
         return env
 
     def popen(self, argv, *, cwd: str | os.PathLike | None = None, stdin=None, stdout=None, stderr=None,
@@ -226,6 +223,11 @@ class Sandbox:
 
     # --- killing --------------------------------------------------------------------------------------------------
 
+    def kill(self, proc: subprocess.Popen) -> None:
+        """Kill a process from popen() and everything it started (use this, not killpg: setsid escapes a group)."""
+        watch = self._watches.get(proc.pid)
+        self._kill_run(proc, watch.container if watch else None)
+
     def _kill_run(self, proc: subprocess.Popen, container: str | None) -> None:
         if container is not None:
             _docker_quiet("kill", container)
@@ -267,7 +269,7 @@ def _checked_argv(argv) -> list[str]:
     return list(argv)
 
 
-def _checked_read_path(p) -> str:
+def checked_read_path(p) -> str:
     """A path the candidate may read: it must exist, and must not be /, the user's home, or a folder holding it."""
     path = Path(p).resolve(strict=True)
     homes = {Path.home().resolve()}
@@ -406,13 +408,13 @@ class _Proc:
 
 
 def _processes(sb: Sandbox) -> dict[int, _Proc]:
-    """Live processes: parent, resident memory, and whether they belong to the sandbox with this token.
+    """Live processes: parent, resident memory, and whether they are known to belong to this sandbox.
 
-    On macOS the kernel says which processes run under this sandbox's profile (the environment of a platform binary
-    such as /bin/sleep is hidden from ps). On Linux the marker in /proc/<pid>/environ is used.
+    On macOS the kernel says which processes run under this sandbox's profile, so even an orphan that called setsid
+    is found. On Linux the launcher is a child subreaper, so every process of a run stays in the tree under it.
     """
     if sys.platform.startswith("linux"):
-        return _linux_processes(f"{MARKER}={sb._token}")
+        return _linux_processes()
     try:
         out = subprocess.run(["ps", "-U", str(os.getuid()), "-o", "pid=,ppid=,rss=,stat="], capture_output=True,
                              timeout=10, check=False).stdout.decode("ascii", errors="replace")
@@ -429,9 +431,8 @@ def _processes(sb: Sandbox) -> dict[int, _Proc]:
     return procs
 
 
-def _linux_processes(needle: str) -> dict[int, _Proc]:
+def _linux_processes() -> dict[int, _Proc]:
     page_kb = os.sysconf("SC_PAGE_SIZE") // 1024
-    marker = needle.encode()
     procs = {}
     for name in os.listdir("/proc"):
         if not name.isdigit():
@@ -441,12 +442,7 @@ def _linux_processes(needle: str) -> dict[int, _Proc]:
                 fields = f.read().rsplit(b")", 1)[1].split()
             if fields[0] == b"Z":
                 continue
-            try:
-                with open(f"/proc/{name}/environ", "rb") as f:
-                    marked = marker in f.read().split(b"\0")
-            except OSError:
-                marked = False
-            procs[int(name)] = _Proc(int(name), int(fields[1]), int(fields[21]) * page_kb, marked)
+            procs[int(name)] = _Proc(int(name), int(fields[1]), int(fields[21]) * page_kb, False)
         except (OSError, IndexError, ValueError):
             continue
     return procs

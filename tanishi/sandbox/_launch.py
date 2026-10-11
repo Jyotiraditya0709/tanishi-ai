@@ -1,4 +1,5 @@
-"""Started by tanishi.sandbox as `python -I -S _launch.py CONFIG ARGV...`: lower the limits, confine, then exec ARGV.
+"""Started by tanishi.sandbox as `python -I -S _launch.py CONFIG ARGV...`: lower the limits, confine, then run ARGV
+(by exec on macOS, where sandbox-exec is ARGV's head; as a supervising parent on Linux, see _supervise).
 
 Standard library only and run as a script, so nothing from `tanishi` is imported before the confinement holds.
 CONFIG is JSON: {"cpu": seconds, "landlock": null | {"rules": [[path, rights], ...], "deny_net": bool}}.
@@ -70,7 +71,8 @@ def _landlock(cfg: dict) -> None:
     attr = Attr(handled, 3 if deny_net else 0)  # BIND_TCP | CONNECT_TCP, with no rule granting either
     size = ctypes.sizeof(Attr) if abi >= 4 else 8
     ruleset = check(libc.syscall(L(_SYS_CREATE), ctypes.byref(attr), L(size), L(0)), "landlock_create_ruleset")
-    for path, kind in cfg["rules"]:
+    own = [f"/proc/{os.getpid()}", "ro"]  # this process's own entry, to list its children (see _supervise)
+    for path, kind in [*cfg["rules"], own]:
         try:
             fd = os.open(path, os.O_PATH | os.O_CLOEXEC)
         except OSError:
@@ -118,6 +120,58 @@ def _seccomp(libc, machine: str) -> None:
         raise OSError(ctypes.get_errno(), "seccomp filter failed")
 
 
+def _children() -> list[int]:
+    me = os.getpid()
+    try:
+        with open(f"/proc/{me}/task/{me}/children") as f:
+            return [int(x) for x in f.read().split()]
+    except OSError:
+        return []
+
+
+def _supervise(argv: list[str]) -> None:
+    """Linux: stay as the parent of the whole run. As a child subreaper this process adopts every orphan (also one
+    that called setsid), so the run is always one tree under it; when the candidate exits, the rest is killed."""
+    import ctypes
+    import signal
+
+    ctypes.CDLL(None).prctl(36, 1, 0, 0, 0)  # PR_SET_CHILD_SUBREAPER
+    pid = os.fork()
+    if pid == 0:
+        _exec(argv)
+    while True:
+        try:
+            done, status = os.wait()
+        except ChildProcessError:
+            os._exit(1)
+        if done == pid:
+            break
+    while kids := _children():  # each kill hands its own children to us, so repeat until none are left
+        for k in kids:
+            try:
+                os.kill(k, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        try:
+            while os.waitpid(-1, os.WNOHANG)[0]:
+                pass
+        except ChildProcessError:
+            break
+    if os.WIFSIGNALED(status):
+        sig = os.WTERMSIG(status)
+        signal.signal(sig, signal.SIG_DFL)
+        os.kill(os.getpid(), sig)
+    os._exit(os.waitstatus_to_exitcode(status) & 0xFF)
+
+
+def _exec(argv: list[str]) -> None:
+    try:
+        os.execvp(argv[0], argv)
+    except OSError as e:
+        sys.stderr.write(f"sandbox: cannot run {argv[0]!r} ({e.strerror})\n")
+    os._exit(127)
+
+
 def main() -> None:
     try:
         cfg = json.loads(sys.argv[1])
@@ -130,11 +184,9 @@ def main() -> None:
     except Exception as e:  # noqa: BLE001 - never run the candidate unconfined
         sys.stderr.write(f"sandbox: could not confine the candidate ({type(e).__name__}: {e})\n")
         os._exit(126)
-    try:
-        os.execvp(argv[0], argv)
-    except OSError as e:
-        sys.stderr.write(f"sandbox: cannot run {argv[0]!r} ({e.strerror})\n")
-        os._exit(127)
+    if cfg.get("landlock"):
+        _supervise(argv)
+    _exec(argv)
 
 
 if __name__ == "__main__":

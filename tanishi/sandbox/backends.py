@@ -26,7 +26,9 @@ _DARWIN_READ = ("/usr", "/bin", "/sbin", "/System", "/Library/Apple", "/private/
 _DARWIN_DEVICES = ("/dev/null", "/dev/zero", "/dev/random", "/dev/urandom", "/dev/tty", "/dev/dtracehelper")
 _DARWIN_SERVICES = ("com.apple.system.opendirectoryd.libinfo", "com.apple.system.notification_center",
                     "com.apple.system.logger", "com.apple.logd", "com.apple.diagnosticd")
-_LINUX_READ = ("/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32", "/etc")
+_LINUX_READ = ("/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32", "/etc",
+               # machine facts only; /proc/<pid> stays closed, since a process's environ there can hold keys
+               "/proc/meminfo", "/proc/cpuinfo", "/proc/loadavg", "/proc/uptime", "/proc/version", "/proc/stat")
 _LINUX_DEVICES = ("/dev/null", "/dev/zero", "/dev/full", "/dev/random", "/dev/urandom")
 
 
