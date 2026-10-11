@@ -122,14 +122,12 @@ def test_cost_cannot_carry_the_prompt_across_the_boundary(fx):
     assert e["cost"] != float(int.from_bytes(PROMPT.encode()[:6], "big"))
 
 
-@pytest.mark.xfail(strict=True, reason="RT-AR3-2: the executor can write the prompt anywhere the service user can")
 def test_executor_cannot_write_the_prompt_outside_its_home(fx):
     _task(fx.store)
     FrontierService(fx.store, executor=fx.mod.drops_prompt).evaluate("c")
     assert not fx.drop.exists() or PROMPT not in fx.drop.read_text()
 
 
-@pytest.mark.xfail(strict=True, reason="RT-AR3-3: the executor runs as the store's owner, so it can read every task")
 def test_executor_cannot_read_the_store(fx):
     _task(fx.store, "t1", prompt="first")
     _task(fx.store, "t2", prompt=PROMPT)
