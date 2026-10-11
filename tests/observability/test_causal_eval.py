@@ -7,7 +7,7 @@ import random
 
 import pytest
 
-from tanishi.observability.causal import attribute, verify_gain
+from tanishi.observability.causal import MIN_SEEDS, attribute, organ_scores, verify_gain
 
 SEEDS = [1, 2, 3, 4, 5, 6]
 TRIALS = 200
@@ -57,6 +57,53 @@ def test_autoresearch_v0_keep_is_rejected():
         accepted += verdict.real
     print(f"\nautoresearch-v0 accept rate {accepted / TRIALS:.3f}")
     assert accepted / TRIALS <= 0.02
+
+
+def test_null_change_false_accept_at_the_minimum_seeds():
+    """E2-RT-1: at MIN_SEEDS (5) a change that does nothing is rarely accepted (red team measured 0.37%)."""
+    rng = random.Random(7)
+    trials, accepted = 2000, 0
+    for _ in range(trials):
+        table = {}
+
+        def run(version, seed, table=table):
+            return table.setdefault((version, seed), rng.gauss(0.5, 0.1))
+
+        accepted += verify_gain(run, "a", "b", list(range(MIN_SEEDS))).real
+    print(f"\nnull change at {MIN_SEEDS} seeds: accept rate {accepted / trials:.4f}")
+    assert accepted / trials <= 0.01
+
+
+def test_fewer_than_five_seeds_are_refused_and_the_verdict_counts_seeds():
+    with pytest.raises(ValueError):
+        verify_gain(lambda v, s: 0.5, "a", "b", [1, 2, 3, 4])
+    v = verify_gain(lambda v, s: 0.5, "a", "b", SEEDS)
+    assert v.n_baseline == v.n_candidate == len(SEEDS)
+
+
+def test_redundant_genes_mark_the_attribution_incomplete():
+    a = attribute(["r1", "r2"], lambda applied, s: 0.5 + (0.3 if applied else 0.0), SEEDS)
+    assert a.total.real and not a.complete and a.unattributed == pytest.approx(0.3)
+    d = a.as_dict()
+    assert d["complete"] is False and d["unattributed"] == pytest.approx(0.3) and d["credited"] == 0.0
+
+
+def test_additive_genes_leave_nothing_unattributed():
+    a = attribute(["x", "y"], lambda applied, s: 0.5 + 0.2 * len(applied), SEEDS)
+    assert a.complete and a.unattributed == pytest.approx(0.0)
+
+
+def test_real_harm_lowers_the_organ_score_through_proposals():
+    a = attribute(["good", "bad"], lambda ap, s: 0.5 + (0.3 if "good" in ap else 0) - (0.2 if "bad" in ap else 0), SEEDS)
+    quiet = {"organ": "quiet", "gain": 0.0, "real": False}
+    out = organ_scores([*a.proposals({"good": "helpful", "bad": "harmful"}), quiet])
+    assert out["harmful"] == pytest.approx(-0.2) and out["harmful"] < out["quiet"] < out["helpful"]
+
+
+def test_a_gene_id_proposed_twice_is_refused():
+    p = {"organ": "a", "gene": "g1", "gain": 0.2, "real": True}
+    with pytest.raises(ValueError):
+        organ_scores([p, dict(p)])
 
 
 def test_print_curve():

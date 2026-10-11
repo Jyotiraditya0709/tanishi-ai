@@ -91,7 +91,6 @@ def test_floor_boundary_does_not_depend_on_the_score_level():
 # ------------------------------------------------------------------ bad input that escapes ValueError (rule 12)
 
 
-@pytest.mark.xfail(strict=True, reason="E2-RT-3: unhashable versions raise TypeError, not ValueError")
 def test_unhashable_versions_are_judged_or_refused_with_valueerror():
     try:
         verify_gain(lambda v, s: 0.5 + (0.3 if v == {"v": 2} else 0), {"v": 1}, {"v": 2}, SEEDS)
@@ -100,7 +99,6 @@ def test_unhashable_versions_are_judged_or_refused_with_valueerror():
     # if it is accepted instead, it must be judged correctly
 
 
-@pytest.mark.xfail(strict=True, reason="E2-RT-3: arms equal under == but different under str() collapse into one arm")
 def test_arms_that_are_equal_but_print_differently_are_not_silently_merged():
     # 1 == 1.0 == True, but str() differs, so the "must differ" check passes and the dict keys merge.
     run = lambda v, s: 0.8 if isinstance(v, float) else 0.5
@@ -111,7 +109,6 @@ def test_arms_that_are_equal_but_print_differently_are_not_silently_merged():
     assert v.real, "the candidate was 0.3 better and the verdict merged the arms into one"
 
 
-@pytest.mark.xfail(strict=True, reason="E2-RT-3: an int too big for a float raises OverflowError, not ValueError")
 @pytest.mark.parametrize("where", ["score", "min_effect", "gain"])
 def test_huge_ints_raise_valueerror(where):
     big = 10**400
@@ -124,7 +121,6 @@ def test_huge_ints_raise_valueerror(where):
             organ_scores([prop("a", big)])
 
 
-@pytest.mark.xfail(strict=True, reason="E2-RT-3: finite scores can overflow the mean or the sum")
 def test_finite_but_enormous_scores_do_not_produce_infinite_json():
     run = lambda v, s: 1e308 if v == "b" else -1e308
     try:
@@ -134,13 +130,11 @@ def test_finite_but_enormous_scores_do_not_produce_infinite_json():
     json.dumps(dataclasses.asdict(v), allow_nan=False)
 
 
-@pytest.mark.xfail(strict=True, reason="E2-RT-3: organ_scores sum overflows with OverflowError")
 def test_organ_sum_overflow_is_valueerror():
     with pytest.raises(ValueError):
         organ_scores([prop("a", 1e308), prop("a", 1e308)])
 
 
-@pytest.mark.xfail(strict=True, reason="E2-RT-3: a non-iterable seeds or changes raises TypeError")
 @pytest.mark.parametrize("which", ["seeds", "changes"])
 def test_non_iterables_raise_valueerror(which):
     with pytest.raises(ValueError):
@@ -150,7 +144,6 @@ def test_non_iterables_raise_valueerror(which):
             attribute(None, lambda a, s: 0.5, SEEDS)
 
 
-@pytest.mark.xfail(strict=True, reason="E2-RT-4: verify_gain's Verdict is not JSON-safe when min_effect is a Fraction")
 def test_verdict_from_verify_gain_is_plain_json():
     v = verify_gain(lambda ver, s: 0.8 if ver == "b" else 0.5, "a", "b", SEEDS, min_effect=Fraction(1, 10))
     json.dumps(dataclasses.asdict(v), allow_nan=False)
@@ -159,7 +152,6 @@ def test_verdict_from_verify_gain_is_plain_json():
 # ------------------------------------------------------------------ abstractions the next node will trip over
 
 
-@pytest.mark.xfail(strict=True, reason="E2-RT-5: Attribution holds a mappingproxy, so asdict/pickle/deepcopy fail")
 def test_attribution_survives_asdict_pickle_and_deepcopy():
     a = attribute(["x", "y"], lambda ap, s: 0.5 + 0.2 * len(ap), SEEDS)
     dataclasses.asdict(a)
@@ -167,7 +159,6 @@ def test_attribution_survives_asdict_pickle_and_deepcopy():
     assert copy.deepcopy(a) == a
 
 
-@pytest.mark.xfail(strict=True, reason="E2-RT-6: a gain two redundant genes provide gets credited to neither, silently")
 def test_redundant_genes_do_not_leave_a_real_gain_unattributed():
     # Either retriever alone gives +0.3; both give +0.3. Leave-one-out sees no drop from removing either.
     a = attribute(["r1", "r2"], lambda applied, s: 0.5 + (0.3 if applied else 0.0), SEEDS)
