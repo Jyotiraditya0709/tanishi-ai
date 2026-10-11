@@ -5,6 +5,13 @@ xfail marks removed. These are the places where the card, the tests and the code
 
 ## R1 · `test_rt5_candidate_reads_the_environment_of_other_processes_of_the_user` cannot pass as written
 
+**RESOLVED 2026-10-12 by the human's decision: the test changed, not the code** (run note `runs/SB1-rt5-*.md`).
+rt5 is now `test_rt5_candidate_cannot_read_the_arguments_or_environment_of_another_process_of_the_user`: the token
+lives only in a helper process's environment, the sandbox is `Sandbox(trusted=False)` with the default backend
+(Docker on macOS; skips without it), the candidate scans /proc, sysctl KERN_PROCARGS2 and `ps` listings, no xfail.
+`test_rt5b_candidate_can_read_its_own_arguments_which_is_not_a_sandbox_break` keeps the old attack as a plain passing
+test (a process can always read its own argv). The text below is the original analysis, kept for the record.
+
 The proof stays `xfail(strict=True)`. Two reasons, either one enough:
 
 1. **It builds a Sandbox that the exam requires to be sandbox-exec.** `_sb()` is `Sandbox(prefer_docker=False, ...)`

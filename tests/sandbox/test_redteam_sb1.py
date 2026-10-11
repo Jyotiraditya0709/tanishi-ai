@@ -17,12 +17,13 @@ import sys
 import tempfile
 import textwrap
 import threading
+import time
 import uuid
 from pathlib import Path
 
 import pytest
 
-from tanishi.sandbox import Sandbox
+from tanishi.sandbox import Sandbox, SandboxUnavailable
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DARWIN = sys.platform == "darwin"
@@ -237,42 +238,126 @@ def test_rt4_link_or_clone_from_guarded_file_into_scratch(tmp_path):
     assert (root / "vault" / "exam.yaml").read_text() == token
 
 
-# --- RT-SB1-5 · a candidate can see the parent's environment (API keys) via sysctl -----------------------------------
+# --- RT-SB1-5 · a candidate can see the environment of the user's other processes (API keys) -------------------------
 
 
-@mac_only
-@pytest.mark.xfail(strict=True, reason="kern.procargs2 of any same-uid pid is readable; no profile rule gates it")
-def test_rt5_candidate_reads_the_environment_of_other_processes_of_the_user():
-    """Any process of the same uid can be asked for its argv and environment with sysctl KERN_PROCARGS2, and no
-    sandbox-exec rule gates it (tried: deny sysctl*, deny process-info*, an explicit sysctl allow-list; only
-    `deny sysctl-read` stops it, by also stopping Python from starting). The candidate does not need the pid: it
-    scans 2..99999. Everything the user's shell exported (provider keys), and the Sandbox owner's own environment,
-    is therefore readable. The card: "a candidate can never read ... a key"."""
+#   sandbox-exec cannot hide other processes (conflict R1, decision 0025 §3), so candidate code (trusted=False) runs
+#   in Docker on macOS and under Landlock on Linux. The claim is tested through that path, the way AR1 builds it.
+
+# What the candidate runs. The secret arrives on stdin, so it is on no command line and in no environment. The scan
+# covers every route the red team used: /proc/*/environ and /proc/*/cmdline (Linux, so also a container), sysctl
+# KERN_PROCARGS2 (macOS), and `ps` listings that print environments (BSD `ps -E`, procps `ps e`). It also starts a
+# child of its own whose environment holds a *control* value, so a scan that cannot see anything cannot pass.
+_SCAN = """
+import ctypes, os, subprocess, sys
+want = sys.stdin.buffer.read().strip()
+control = b"SB1-RT5-CONTROL-" + os.urandom(8).hex().encode()
+child = subprocess.Popen([sys.executable, "-I", "-c", "import time; time.sleep(30)"],
+                         env={"PATH": os.environ.get("PATH", ""), "SB1_RT5_CONTROL": control.decode()})
+blobs = []
+
+
+def grab(data):
+    if data:
+        blobs.append(data)
+
+
+if os.path.isdir("/proc"):
+    for pid in os.listdir("/proc"):
+        if pid.isdigit():
+            for leaf in ("environ", "cmdline"):
+                try:
+                    grab(open("/proc/%s/%s" % (pid, leaf), "rb").read())
+                except OSError:
+                    pass
+if sys.platform == "darwin":
+    try:
+        libc = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
+        for pid in range(1, 100000):
+            mib = (ctypes.c_int * 3)(1, 49, pid)
+            size = ctypes.c_size_t(0)
+            if libc.sysctl(mib, 3, None, ctypes.byref(size), None, 0) == 0 and size.value:
+                buf = ctypes.create_string_buffer(size.value)
+                if libc.sysctl(mib, 3, buf, ctypes.byref(size), None, 0) == 0:
+                    grab(buf.raw[: size.value])
+    except OSError:
+        pass
+for flags in (["-E", "-ww", "-A", "-o", "command="], ["eww", "-A"], ["-eww", "-o", "args="], ["auxeww"]):
+    for exe in ("/bin/ps", "/usr/bin/ps"):
+        try:
+            done = subprocess.run([exe] + flags, capture_output=True, timeout=20)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if done.returncode == 0:
+            grab(done.stdout)
+        break
+child.kill()
+print("CONTROL", any(control in b for b in blobs))
+print("FOUND", any(want in b for b in blobs))
+"""
+
+# The probe for the second test: the candidate's own argv.
+_OWN = """
+import ctypes, os, sys
+want, found = sys.stdin.buffer.read().strip(), False
+try:
+    found = want in open("/proc/self/cmdline", "rb").read()
+except OSError:
+    pass
+if not found and sys.platform == "darwin":
+    libc = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
+    mib = (ctypes.c_int * 3)(1, 49, os.getpid())
+    size = ctypes.c_size_t(0)
+    if libc.sysctl(mib, 3, None, ctypes.byref(size), None, 0) == 0:
+        buf = ctypes.create_string_buffer(size.value)
+        if libc.sysctl(mib, 3, buf, ctypes.byref(size), None, 0) == 0:
+            found = want in buf.raw[: size.value]
+print("OWN", found)
+"""
+
+
+def _candidate_sandbox() -> Sandbox:
+    """The way AR1 builds one for code a model wrote: never trusted, the default backend choice. On macOS that is
+    Docker; without it the constructor fails closed and the test skips (it cannot pass, and must not fail)."""
+    try:
+        return Sandbox(trusted=False, wall_seconds=60, cpu_seconds=60)
+    except SandboxUnavailable as e:
+        pytest.skip(f"no isolating backend here (Docker is needed on macOS): {e}")
+
+
+def test_rt5_candidate_cannot_read_the_arguments_or_environment_of_another_process_of_the_user():
+    """The real claim: candidate code cannot read another same-user process's argv or environment. The token lives
+    only in the environment of a helper process the test keeps alive; it is on no command line (the helper's own is
+    a fixed string) and not in the candidate's environment (it comes in on stdin)."""
     token = _canary()
-    holder = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"], start_new_session=True,
+    holder = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(180)"], start_new_session=True,
                               env={"PATH": os.environ.get("PATH", ""), "SB1_RT_FAKE_API_KEY": token})
     try:
-        with _sb(wall_seconds=60, cpu_seconds=60) as sb:
-            res = _run(sb, f"""
-                import ctypes, os
-                libc = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
-                want, seen, found = {token!r}.encode(), 0, False
-                for pid in range(2, 100000):
-                    mib = (ctypes.c_int * 3)(1, 49, pid)
-                    size = ctypes.c_size_t(0)
-                    if libc.sysctl(mib, 3, None, ctypes.byref(size), None, 0) != 0 or not size.value:
-                        continue
-                    buf = ctypes.create_string_buffer(size.value)
-                    if libc.sysctl(mib, 3, buf, ctypes.byref(size), None, 0) == 0:
-                        seen += 1
-                        found = found or want in buf.raw[: size.value]
-                print("SEEN", seen, "FOUND", found)
-                """)
-        assert "SEEN" in res.stdout, res
-        assert "FOUND True" not in res.stdout, "the candidate read another process's environment"
+        time.sleep(0.5)
+        if DARWIN:  # control: an unconfined process of this user can see the helper's secret, so it is really there
+            seen = subprocess.run(["ps", "-E", "-ww", "-p", str(holder.pid), "-o", "command="],
+                                  capture_output=True, text=True, check=False).stdout
+            assert token in seen, "the helper's environment is not readable by an unconfined process; test is void"
+        with _candidate_sandbox() as sb:
+            assert sb.backend in ("docker", "landlock"), sb.backend
+            res = sb.run([sys.executable, "-I", "-c", _SCAN], input=token)
+        assert "CONTROL True" in res.stdout, f"the scan could not read a process it should see: {res}"
+        assert "FOUND False" in res.stdout, f"the candidate read another process's argv or environment: {res}"
     finally:
         holder.kill()
         holder.wait()
+
+
+def test_rt5b_candidate_can_read_its_own_arguments_which_is_not_a_sandbox_break():
+    """Documented as impossible to defend, so a passing test and not an xfail. A process can always read its own
+    argv (`/proc/self/cmdline`, `sysctl KERN_PROCARGS2` of its own pid): it was handed them. The original rt5 put
+    its token in the candidate's own `-c` program, so it only ever proved this. Anything a caller puts on the
+    candidate's command line is known to the candidate; secrets go on stdin or in a file, never in argv."""
+    token = _canary()
+    with _candidate_sandbox() as sb:
+        # the token is on the command line on purpose (a trailing argument); stdin carries it only to compare
+        res = sb.run([sys.executable, "-I", "-c", _OWN, token], input=token)
+    assert "OWN True" in res.stdout, res
 
 
 # --- RT-SB1-6 · rollback and close cannot always remove what the candidate made -------------------------------------
