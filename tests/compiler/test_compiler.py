@@ -32,9 +32,9 @@ import time
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
+
 from tanishi.compiler import experience as xp
 from tanishi.compiler import passes
-
 from tanishi.core_state import beliefs, events, predictions
 from tanishi.core_state.db import open_db
 
