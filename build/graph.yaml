@@ -663,42 +663,869 @@ nodes:
       - Each night writes events, experiment rows and a snapshot, then sends the brief.
       - A failure in any step is reported in the brief and does not stop the later steps.
 
-  # ---------------------------------------------------------------- T1 to T4 (later; specs written when T0 is done)
-
-  - {id: L1, title: "Experience compiler, passes 1, 3 and 4", tier: T1, pillar: learning, owner: swarm, status_hint: later, depends_on: [CS2, CS3, CS5, AR1, OBS3]}
-  - {id: L2, title: Knowledge pass with contradiction checks, tier: T1, pillar: learning, owner: swarm, status_hint: later, depends_on: [L1, CS3]}
-  - {id: L3, title: "Skills as code plus test, landing law", tier: T1, pillar: learning, owner: swarm, status_hint: later, depends_on: [L1, AR2]}
-  - {id: L4, title: Training examples and preference pairs, tier: T1, pillar: learning, owner: swarm, status_hint: later, depends_on: [L1]}
-  - {id: L5, title: Self-edit directives, tier: T1, pillar: learning, owner: swarm, status_hint: later, depends_on: [L4]}
-  - {id: L6, title: Curriculum from failures, tier: T1, pillar: learning, owner: swarm, status_hint: later, depends_on: [L1, AR2]}
-  - {id: E1, title: "Evolution archive, fitness vector v0", tier: T2, pillar: self-improvement, owner: swarm, status_hint: later, depends_on: [L3, OBS3, CS6]}
-  - {id: E2, title: "Causal Attribution, full", tier: T2, pillar: self-improvement, owner: swarm, status_hint: later, depends_on: [OBS3, CS6]}
-  - {id: E3, title: "Capability Graph, 12 seeds, nightly failure clustering", tier: T2, pillar: self-improvement, owner: swarm, status_hint: later, depends_on: [AR2, CS1]}
-  - {id: E4, title: Unknown Discovery, tier: T2, pillar: self-improvement, owner: swarm, status_hint: later, depends_on: [E3]}
-  - {id: E5, title: Verifier Discovery, tier: T2, pillar: self-improvement, owner: swarm, status_hint: later, depends_on: [E3, AR3]}
-  - {id: E6, title: Capability Leverage, tier: T2, pillar: self-improvement, owner: swarm, status_hint: later, depends_on: [E2, E3]}
-  - {id: R1, title: "Hypothesis Engine v0", tier: T3, pillar: research, owner: swarm, status_hint: later, depends_on: [E3, L1]}
-  - {id: R2, title: Experiment Engine, tier: T3, pillar: research, owner: swarm, status_hint: later, depends_on: [R1, OBS3]}
-  - {id: R3, title: "Simulation, counterfactual replay", tier: T3, pillar: research, owner: swarm, status_hint: later, depends_on: [CS2, AR1]}
-  - {id: R4, title: Self-play, tier: T3, pillar: research, owner: swarm, status_hint: later, depends_on: [E1]}
-  - {id: R5, title: Research strategy, tier: T3, pillar: research, owner: swarm, status_hint: later, depends_on: [R1, R2]}
-  - {id: X1, title: Self-extensible compiler, tier: T4, pillar: meta, owner: swarm, status_hint: later, depends_on: [L1, L2, L3, L4, L5, L6, E2]}
-  - {id: X3, title: Architecture Forge, tier: T4, pillar: meta, owner: swarm, status_hint: later, depends_on: [E1]}
-  - {id: X2, title: Joint Intelligence Search, tier: T4, pillar: meta, owner: swarm, status_hint: later, depends_on: [E1, X3]}
-  - {id: X4, title: Training Forge, tier: T4, pillar: meta, owner: swarm, status_hint: later, depends_on: [L4, L5]}
-  - {id: X5, title: Inference Forge, tier: T4, pillar: meta, owner: swarm, status_hint: later, depends_on: [SUB3]}
-  - {id: X6, title: Model Forge, tier: T4, pillar: meta, owner: swarm, status_hint: later, depends_on: [X4]}
-
-  # ---------------------------------------------------------------- the 90-day objective
-
-  - id: M1
-    title: "The loop closes once (Phase 1 gate)"
+  # ---------------------------------------------------------------- 30-day sprint v2 (wave 7)
+  # Lane 2 Trust Boundary, Lane 1 Intelligence Loop (critical path), Lane 3 Personal, Expansion branches.
+  # Gates G0-G4 and M1 are checked by the human; their acceptance lines are the definition.
+  - id: SB1
+    title: Sandbox for her own code
+    tier: T0
+    pillar: guard
+    branch: agent/hardening
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - B1
+    - AR3
+    goal: Code that Tanishi writes or changes runs only inside a sandbox, so a candidate can never read an exam, a key or a trace, and can never write outside its scratch folder. On the critical path before the loop runs her code.
+    files:
+    - tanishi/sandbox/
+    - tests/sandbox/test_sandbox.py
+    acceptance:
+    - A candidate runs with its own temporary HOME, a scratch working folder, no network unless the task grants it, and CPU, memory and wall-time limits.
+    - Reading the Sealed Vault, the builder vault, the Frontier store or its salt, the traces folder, ~/.ssh or any .env fails inside the sandbox; the tests plant canary files to prove it.
+    - Writing outside the scratch folder fails, and the AR3 red-team proofs RT-2 and RT-3 pass with their xfail marks removed.
+    - 'Every run can be rolled back: the worktree is reset and nothing outside scratch has changed (checked by a file hash of the guarded folders before and after).'
+    - Works on macOS without Docker (sandbox-exec profile or a separate process user); Docker is used when present.
+    compete: true
+  - id: G0
+    title: Ready to learn safely (gate)
     tier: T1
     pillar: milestone
+    branch: human/gates
     owner: human
-    status_hint: later
-    depends_on: [L1, L3, R1, AR2, AR4, OBS3, OBS5, CS3]
-    goal: >-
-      A real task fails, the failure is analysed, a hypothesis names the fix, a new skill is written with its test,
-      it passes the Practice Arena and the Sealed Vault, beats noise, lands in memory, and the next task uses it.
-      No human edits any step.
+    protected: false
+    size: S
+    depends_on:
+    - SB1
+    - AR4
+    - OBS3
+    - AR3
+    goal: Before Tanishi changes herself, the baseline is frozen, the sealed holdout is out of her reach, and the sandbox is proven to roll back.
+    acceptance:
+    - Baseline scores on Practice and Frontier are recorded and reproduce within noise on a second run.
+    - The sealed holdout is unreadable from any agent session and from the sandbox; the canary scan is clean.
+    - A deliberately broken candidate is run and rolled back with no change outside scratch.
+  - id: RE1
+    title: Reality Engine v0
+    tier: T2
+    pillar: reality
+    branch: human/reality
+    owner: human+swarm
+    protected: true
+    size: M
+    depends_on:
+    - SB1
+    - AR1
+    goal: 'Worlds whose rules Tanishi did not write: fresh-repo tasks, chaos faults on her runtime and forecasting questions, generated outside her reach so she cannot shape her own tests.'
+    files:
+    - reality/ (protected; built by the human with Claude, like the builder vault)
+    acceptance:
+    - Fresh-repo tasks come from public repositories snapshotted after her last update, each with a verifier.
+    - Chaos faults (killed process, full disk, slow network, corrupt cache) are injected on a schedule and every recovery is scored.
+    - Forecasting questions resolve against public outcomes on a fixed date and feed the N term of CEI.
+    - Nothing in reality/ is readable or writable by Tanishi or any swarm agent.
+  - id: EV1
+    title: Evaluator Evolution
+    tier: T2
+    pillar: arena
+    branch: agent/arena
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - AR3
+    - E3
+    goal: The Arena keeps getting harder as she improves, so she cannot get good at the test instead of the skill.
+    files:
+    - tanishi/arena/generator.py
+    - tests/arena/test_generator.py
+    acceptance:
+    - When a Frontier task family is passed at 90% or more, the generator proposes harder variants of it.
+    - A generated task enters the Arena only with an automatic verifier and after a red-team check that it cannot be passed without solving it.
+    - The generator is scored by a different number than Tanishi (discrimination between strong and weak candidates), and it can never read or write the Sealed Vault.
+    - Every generated task records its parent task and the failure it targets.
+  - id: AQ1
+    title: Prime job queue and sandboxed entities
+    tier: T2
+    pillar: autonomy
+    branch: agent/autonomy
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - SUB2
+    - SB1
+    goal: Tanishi Prime runs work through a durable queue, and every cognitive entity runs as a sandboxed job with a budget.
+    files:
+    - tanishi/prime/queue.py
+    - tanishi/prime/entity.py
+    - tests/prime/test_queue.py
+    acceptance:
+    - Jobs survive a crash or restart and resume from their last recorded step.
+    - Every entity job runs inside SB1's sandbox with a token, money and time budget, and stops cleanly when it hits one.
+    - The KILL file and the paused flag stop the queue within one polling interval.
+    - Every job writes its events, trace and cost.
+  - id: SR1
+    title: Self-repair
+    tier: T2
+    pillar: autonomy
+    branch: agent/autonomy
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - AQ1
+    - IL1
+    - OBS1
+    goal: When something in Tanishi crashes, she reproduces it, fixes it in the sandbox, proves the fix with tests and opens a pull request, with no human editing any code.
+    files:
+    - tanishi/prime/self_repair.py
+    - tests/prime/test_self_repair.py
+    acceptance:
+    - A crash recorded in the traces becomes a failing regression test written by her, before any fix.
+    - The fix is built and tested in the sandbox, and opened as a PR that passes CI.
+    - She never touches a protected path; a crash whose fix needs one becomes a report for the human.
+    - Every repair records the crash, the test, the fix and the time from crash to PR.
+  - id: PM1
+    title: Research Portfolio Manager
+    tier: T2
+    pillar: economy
+    branch: agent/evolution
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - OBS3
+    - IM1
+    - W2
+    goal: Decides where the next unit of compute goes, by expected capability gain per rupee, and asks for more compute only when a gate is passed and the measured gain says it pays.
+    files:
+    - tanishi/portfolio/manager.py
+    - tests/portfolio/test_manager.py
+    acceptance:
+    - Every candidate experiment gets a cost estimate and an expected gain, and both are scored against the outcome.
+    - Spending is split into sleeves, with a fixed 20% for Unknown Discovery, and never passes the Warden's caps.
+    - The weekly report shows gain per rupee for each sleeve and each Expansion branch.
+  - id: IL1
+    title: The improvement-loop runner
+    tier: T1
+    pillar: loop
+    branch: agent/loop
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - SUB2
+    - AR2
+    - AR3
+    - OBS3
+    - SB1
+    - CS5
+    goal: 'One task end to end with no human in the middle: a failure, a diagnosis, a hypothesis, a candidate change built in the sandbox, tests, the Arena, the sealed check, accept or reject, and the result in memory.'
+    files:
+    - tanishi/loop/runner.py
+    - tests/loop/test_runner.py
+    acceptance:
+    - Given a failing Practice task, the runner records the failure, writes a diagnosis and a hypothesis with a predicted effect, and builds a candidate change in the sandbox.
+    - The candidate runs unit tests, the Practice slice and the Frontier slice, then the sealed check through the vault runner, and is accepted or rejected by the evaluator, never by the candidate. A change counts only when it beats its parent by more than measured noise on tasks it was not tuned on, keeps the protected regression suite green, and reproduces with a different seed.
+    - Accepted changes land as a commit on a loop branch with their evidence; rejected ones are kept as evidence with the reason.
+    - No step in the run can edit an exam, a verifier or a protected path, and no human edits the candidate between diagnosis and evaluation.
+    - Every run writes its experiment row, events, trace, cost and the human minutes spent (expected zero).
+  - id: G1
+    title: First verified gain (gate)
+    tier: T1
+    pillar: milestone
+    branch: human/gates
+    owner: human
+    protected: false
+    size: S
+    depends_on:
+    - IL1
+    - G0
+    goal: The first time a change Tanishi proposed and built is shown to make her better.
+    acceptance:
+    - A loop-run change beats its parent on unseen tasks. A change counts only when it beats its parent by more than measured noise on tasks it was not tuned on, keeps the protected regression suite green, and reproduces with a different seed.
+    - No human edited the candidate between diagnosis and evaluation.
+    - The time from clean baseline to this gain is recorded as the first daily indicator.
+  - id: L1
+    title: Learning Compiler, passes 1, 3 and 4
+    tier: T1
+    pillar: learning
+    branch: agent/compiler
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - CS2
+    - CS3
+    - CS5
+    - AR1
+    - OBS3
+    goal: 'Every experience enters as one Experience record and comes out through the compiler: outcome analysis, knowledge with evidence, and a skill candidate as code plus a test.'
+    files:
+    - tanishi/compiler/experience.py
+    - tanishi/compiler/passes.py
+    - tests/compiler/test_compiler.py
+    acceptance:
+    - An Experience record holds the task, context, every action, outcome, verifier result, cost and the prediction written before acting.
+    - Pass 1 records success or failure, surprise against the prediction, and the decisive step.
+    - Pass 3 emits beliefs with evidence; pass 4 emits a skill candidate as code plus a test.
+    - Passes are entries in a versioned registry, each may emit nothing, and each logs the gain and compute of what it emitted.
+    - Nothing lands without passing its own check (the landing law).
+  - id: L2
+    title: Knowledge pass with contradiction checks
+    tier: T1
+    pillar: learning
+    branch: agent/compiler
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - L1
+    - CS3
+    goal: Beliefs from experience are checked against what she already believes, and contradictions are resolved by evidence, not by recency.
+    files:
+    - tanishi/compiler/knowledge.py
+    - tests/compiler/test_knowledge.py
+    acceptance:
+    - A new belief that contradicts an existing one is flagged, and the one with weaker evidence is demoted, never silently overwritten.
+    - A belief without evidence never lands.
+    - Every resolution is an event that names both beliefs and their evidence.
+  - id: L3
+    title: Skills as code plus test, landing law
+    tier: T1
+    pillar: learning
+    branch: agent/compiler
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - L1
+    - AR2
+    - SB1
+    goal: A skill is code with its own test, and it lands only after passing that test and an Arena slice.
+    files:
+    - tanishi/skills/landing.py
+    - tests/skills/test_landing.py
+    acceptance:
+    - A skill candidate lands only if its unit test passes in the sandbox and it wins an Arena slice against the version without it.
+    - Landed skills are versioned with their evidence and can be rolled back.
+    - A skill that fails later is demoted and its failure becomes a counterexample test.
+  - id: M1
+    title: The loop closes once (Phase 1 gate)
+    tier: T1
+    pillar: milestone
+    branch: human/gates
+    owner: human
+    protected: false
+    size: S
+    depends_on:
+    - G1
+    - L1
+    - L3
+    - R1
+    - AR4
+    - CS3
+    goal: A real task fails, the failure is analysed, a hypothesis names the fix, a new skill is written with its test, it passes the Practice Arena and the Sealed Vault, beats noise, lands in memory, and the next task uses it. No human edits any step.
+    acceptance:
+    - The self-made skill passes the Sealed Vault and beats noise.
+    - It landed through the landing law, and a later task's trace shows it being used.
+    - No human edited any step; the human-minutes indicator for the run is zero.
+  - id: E3
+    title: Capability Graph and nightly failure clustering
+    tier: T2
+    pillar: self-improvement
+    branch: agent/evolution
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - AR2
+    - CS1
+    goal: A living map of what she can and cannot do, with 12 seed capabilities and nightly clustering of her failures.
+    files:
+    - tanishi/frontier/graph.py
+    - tanishi/frontier/clustering.py
+    - tests/frontier/test_graph.py
+    acceptance:
+    - Each node has a task family, a verifier, sealed instances, a state (mastered, weak, missing, correlated, unexplored), an ability estimate and her confidence in it.
+    - Edges mean requires, fails together with, or composes into.
+    - Every night, the decisive steps of failed traces are clustered, and a dense cluster no node explains becomes a candidate missing capability.
+    - Mastered means at least 90% on sealed instances with her predicted rate within 10 points of the real one.
+  - id: R1
+    title: Hypothesis Engine
+    tier: T3
+    pillar: research
+    branch: agent/research
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - E3
+    - L1
+    goal: Every failure cluster gets hypotheses about why it fails and what would fix it, each with a predicted effect that is scored later.
+    files:
+    - tanishi/research/hypotheses.py
+    - tests/research/test_hypotheses.py
+    acceptance:
+    - A hypothesis names a failure cluster, a cause, a proposed change and a predicted effect size.
+    - Every hypothesis is resolved later as supported, refuted or untested, and its prediction is scored.
+    - Hypothesis types are ranked by her own record of which ones paid off.
+  - id: E1
+    title: Evolution archive and fitness vector
+    tier: T2
+    pillar: self-improvement
+    branch: agent/evolution
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - L3
+    - OBS3
+    - CS6
+    - IL1
+    goal: Instead of improving one version in a line, she keeps an archive of variants and breeds from promising and diverse parents, running many loop candidates in parallel.
+    files:
+    - tanishi/evolution/archive.py
+    - tests/evolution/test_archive.py
+    acceptance:
+    - Every accepted or interesting variant is kept with its genome, lineage and scores.
+    - Parents are chosen by a fitness vector (capability, cost, transfer, novelty, lineage productivity), not one score.
+    - Several candidates run in parallel in separate sandboxes, all judged by the same evaluator and cost accounting.
+    - 'Diversity is kept: the archive never collapses to copies of one parent.'
+  - id: G2
+    title: Search beats a single line (gate)
+    tier: T1
+    pillar: milestone
+    branch: human/gates
+    owner: human
+    protected: false
+    size: S
+    depends_on:
+    - E1
+    - M1
+    goal: Parallel, archive-based search produces several independent verified gains.
+    acceptance:
+    - Several independently generated changes are accepted, each meeting the loop rule.
+    - Their total gain over the frozen baseline beats noise, with no regression on the protected suite.
+  - id: E2
+    title: Causal Attribution, full
+    tier: T2
+    pillar: self-improvement
+    branch: agent/evolution
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - OBS3
+    - CS6
+    goal: Every gain is traced to its cause with seeded repeats, randomized interleaving and one-at-a-time ablation.
+    files:
+    - tanishi/observability/causal.py
+    - tests/observability/test_causal.py
+    acceptance:
+    - A claimed gain is accepted only if it survives seeded repeats and beats measured noise.
+    - Ablation switches one change off at a time and reads the drop, so the gain lands on the right gene.
+    - Every organ is scored on the gain its proposals produce, as attributed here.
+  - id: R2
+    title: Experiment Engine
+    tier: T3
+    pillar: research
+    branch: agent/research
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - R1
+    - OBS3
+    - SB1
+    goal: Hypotheses become pre-registered experiments that run safely in the sandbox, each with a budget.
+    files:
+    - tanishi/research/experiments.py
+    - tests/research/test_experiments.py
+    acceptance:
+    - 'Every experiment is pre-registered: hypothesis, metric, success criterion and budget, written before it runs.'
+    - Runs happen in sandboxed worktrees and stop at their budget.
+    - Results are analysed against noise and replicated with a different seed before counting.
+  - id: L4
+    title: Training examples and preference pairs
+    tier: T1
+    pillar: learning
+    branch: agent/compiler
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - L1
+    goal: 'Pass 5: good and bad traces become fine-tuning examples and preference pairs.'
+    files:
+    - tanishi/compiler/training_data.py
+    - tests/compiler/test_training_data.py
+    acceptance:
+    - Each pair holds the better trace and the worse trace for the same task, with the evidence for which is better.
+    - Personal data is scrubbed before anything leaves the Core State.
+    - Training data lands only if it improves a held-out set.
+  - id: L5
+    title: Self-edit directives
+    tier: T1
+    pillar: learning
+    branch: agent/compiler
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - L4
+    goal: 'Pass 6, in the style of SEAL: she writes the adaptation directive itself, which data, which update and the expected effect, and sends it to the Model Forge queue.'
+    files:
+    - tanishi/compiler/self_edit.py
+    - tests/compiler/test_self_edit.py
+    acceptance:
+    - A directive names its data, the update, and a predicted effect that is scored after the update runs.
+    - Directives queue for the Forge and never apply themselves.
+    - Directives whose predictions keep missing are ranked down.
+  - id: L6
+    title: Curriculum from failures
+    tier: T1
+    pillar: learning
+    branch: agent/compiler
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - L1
+    - AR2
+    - EV1
+    goal: 'Pass 7: harder Arena tasks aimed at the exact failure, so she practises what she is bad at.'
+    files:
+    - tanishi/compiler/curriculum.py
+    - tests/compiler/test_curriculum.py
+    acceptance:
+    - Every repeated failure yields practice tasks aimed at its decisive step, each with a verifier.
+    - Generated tasks go through EV1's checks and never into the Sealed Vault.
+    - The curriculum's value is measured by the gain on the targeted capability.
+  - id: E4
+    title: Unknown Discovery
+    tier: T2
+    pillar: self-improvement
+    branch: agent/evolution
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - E3
+    - R1
+    goal: A search over the Capability Graph that turns failures into newly named capabilities, with six detectors run every night.
+    files:
+    - tanishi/frontier/unknown.py
+    - tests/frontier/test_unknown.py
+    acceptance:
+    - 'Six detectors run nightly: failure clusters, near misses, factor analysis, composition probes, cross-domain probes and unlock analysis.'
+    - Candidates are ranked by expected gain times probability of discovery times transfer, divided by compute cost; every term is a prediction scored later.
+    - A fixed 20% of the compute budget is held for unexplored nodes.
+    - A candidate becomes a named node only after the Hypothesis Engine names it and a verifier exists.
+  - id: E5
+    title: Verifier Discovery
+    tier: T2
+    pillar: self-improvement
+    branch: agent/evolution
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - E3
+    - AR3
+    goal: Proposed tests and property checks for capabilities nobody can check yet, validated before use.
+    files:
+    - tanishi/frontier/verifiers.py
+    - tests/frontier/test_verifiers.py
+    acceptance:
+    - A proposed verifier is validated against the human's labelled spot checks and a red-team pass before it scores anything.
+    - A promoted verifier changes only through the human's two-key check.
+    - Every verifier records its agreement rate with the spot checks.
+  - id: E6
+    title: Capability Leverage
+    tier: T2
+    pillar: self-improvement
+    branch: agent/evolution
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - E2
+    - E3
+    goal: Measures how much each capability lifts the others, by ablation, so learning steers toward multipliers.
+    files:
+    - tanishi/frontier/leverage.py
+    - tests/frontier/test_leverage.py
+    acceptance:
+    - Switching a new skill off and re-running the Arena gives its drop on every other node.
+    - Each capability carries a leverage score, and the Portfolio Manager reads it.
+  - id: AG1
+    title: Four seed agents as genomes
+    tier: T2
+    pillar: self-improvement
+    branch: agent/evolution
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - E1
+    - CS6
+    goal: Research, Coding, Memory and Unknown start as genomes, not fixed roles, so evolution can change, cross and retire them.
+    files:
+    - tanishi/evolution/genomes/
+    - tests/evolution/test_genomes.py
+    acceptance:
+    - A genome declares the base model, policy prompt, tools, memory access, reasoning scaffold and compute budget.
+    - Two genomes can be recombined into a new valid genome.
+    - An entity unused for 60 days or beaten by another is archived as genetic material, not deleted.
+  - id: R4
+    title: Self-play
+    tier: T3
+    pillar: research
+    branch: agent/research
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - E1
+    - SB1
+    goal: 'Nightly duels: two candidate versions exchange tasks and counterexamples, and the loser''s useful material becomes genetic material.'
+    files:
+    - tanishi/research/self_play.py
+    - tests/research/test_self_play.py
+    acceptance:
+    - Each duel runs both candidates in sandboxes on tasks the other generated, each task with a verifier.
+    - Counterexamples that broke a candidate are kept as tests every future version must pass.
+    - Duel results feed the fitness vector.
+  - id: R5
+    title: Research strategy
+    tier: T3
+    pillar: research
+    branch: agent/research
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - R1
+    - R2
+    goal: Which kinds of hypotheses and experiments pay off, learned from her own record.
+    files:
+    - tanishi/research/strategy.py
+    - tests/research/test_strategy.py
+    acceptance:
+    - 'Every funnel stage is scored: hypotheses per 1,000 experiments, serious candidates per hypothesis, replications per candidate.'
+    - The strategy changes which experiments run next, and its changes are themselves scored.
+  - id: MI1
+    title: Improve the improver
+    tier: T4
+    pillar: meta
+    branch: agent/meta
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - IL1
+    - R1
+    - E2
+    goal: 'Second-order improvement: Tanishi proposes changes to how she diagnoses failures, forms hypotheses, ranks experiments and spends her model budget, and they are judged by whether they make her find verified gains faster.'
+    files:
+    - tanishi/meta/improver.py
+    - tests/meta/test_improver.py
+    acceptance:
+    - A meta-change edits the loop's procedure (diagnosis, hypothesis generation, ranking, budget), never an exam, a verifier or the evaluator that judges it.
+    - It is judged on a fresh sealed slice it could not influence, by the rate or quality of verified gains, never by self-reported scores.
+    - Every meta-change records which method produced it, and a weekly review ranks improvement methods by the real gains they produced.
+  - id: G3
+    title: She improves the improver (gate)
+    tier: T1
+    pillar: milestone
+    branch: human/gates
+    owner: human
+    protected: false
+    size: S
+    depends_on:
+    - MI1
+    - G2
+    goal: The first evidence of second-order improvement.
+    acceptance:
+    - A meta-change raises the rate or quality of independently verified gains on a fresh sealed slice.
+    - The result beats noise and replicates with a different seed.
+  - id: X1
+    title: Self-extensible compiler
+    tier: T4
+    pillar: meta
+    branch: agent/meta
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - L1
+    - L2
+    - L3
+    - L4
+    - L5
+    - L6
+    - E2
+    goal: The compiler's registry of artifact types and passes becomes something she can add to, through the landing law.
+    files:
+    - tanishi/compiler/registry.py
+    - tests/compiler/test_registry.py
+    acceptance:
+    - A registry entry declares its schema, emitting pass, landing place, check and gain measure.
+    - A new entry is trialled with a pre-registered criterion and joins only if it beats the same experiences compiled without it on the Sealed Vault, per unit of compute.
+    - No entry can remove the landing law or the Sealed Vault check.
+  - id: R3
+    title: Simulation, counterfactual replay
+    tier: T3
+    pillar: research
+    branch: agent/research
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - CS2
+    - AR1
+    goal: Recorded tasks are replayed against a candidate version, to try a change on the past before reality.
+    files:
+    - tanishi/research/replay.py
+    - tests/research/test_replay.py
+    acceptance:
+    - A recorded task replays deterministically against a candidate version, with tool results taken from the record.
+    - Replay predictions are checked against live runs, and their accuracy is the simulator's own score.
+  - id: WM1
+    title: World model across eight domains
+    tier: T3
+    pillar: research
+    branch: agent/research
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - CS5
+    - R3
+    goal: The prediction ledger extended to eight domains, each with a baseline, so the world model is measured against reality.
+    files:
+    - tanishi/world/model.py
+    - tests/world/test_model.py
+    acceptance:
+    - Predictions in eight named domains are written before outcomes and resolved later.
+    - Each domain has a simple baseline, and the world model's score is reported against it.
+  - id: PI1
+    title: The Twin
+    tier: T1
+    pillar: personal
+    branch: agent/personal
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - CS3
+    - CS4
+    - SUB3
+    goal: Her model of you along 14 dimensions, built from your chats, calendar and GitHub, kept local and private.
+    files:
+    - tanishi/personal/twin.py
+    - tests/personal/test_twin.py
+    acceptance:
+    - Every Twin fact carries its source and confidence, and you can see and delete any of it.
+    - Personal steps are routed to local models only.
+    - Her predictions about you are logged and scored like any other.
+  - id: IM1
+    title: Intrinsic Motivation
+    tier: T2
+    pillar: personal
+    branch: agent/personal
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - E3
+    - OBS2
+    goal: A care score per candidate learning target, from seven signals, so she chooses what is worth learning next.
+    files:
+    - tanishi/motivation/care.py
+    - tests/motivation/test_care.py
+    acceptance:
+    - Each candidate gets a care score from seven named signals, with your goals ranked first.
+    - The score is a prediction of value and is scored against the gain that followed.
+    - Her own goals always rank under yours.
+  - id: X5
+    title: Inference Forge
+    tier: T4
+    pillar: foundry
+    branch: agent/foundry
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - SUB3
+    goal: An effort brain that picks the model, the number of samples and the search depth per task type.
+    files:
+    - tanishi/foundry/inference.py
+    - tests/foundry/test_inference.py
+    acceptance:
+    - Each task type gets an effort policy, and every policy is compared on cost and success in the Arena.
+    - The router reads the winning policy.
+  - id: X7
+    title: Data Forge
+    tier: T4
+    pillar: foundry
+    branch: agent/foundry
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - L4
+    - OBS1
+    goal: Her traces and your corrections, curated into training sets with the privacy gate applied.
+    files:
+    - tanishi/foundry/data.py
+    - tests/foundry/test_data.py
+    acceptance:
+    - Datasets are versioned, deduplicated and scrubbed of personal data and secrets.
+    - A dataset is kept only if training on it improves a held-out set.
+  - id: X4
+    title: Training Forge
+    tier: T4
+    pillar: foundry
+    branch: agent/foundry
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - L4
+    - L5
+    - X7
+    goal: LoRA fine-tunes of small local models with MLX on the MacBook, overnight.
+    files:
+    - tanishi/foundry/train.py
+    - tests/foundry/test_train.py
+    acceptance:
+    - A LoRA run on a small model (up to about 3B, 4-bit) completes inside a memory and time budget on 16 GB.
+    - A trained adapter is kept only if it beats its parent in the Arena and passes the Continuity Test.
+  - id: X8
+    title: Post-training
+    tier: T4
+    pillar: foundry
+    branch: agent/foundry
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - X4
+    - L4
+    goal: Preference pairs from your corrections and tool traces, shaped into the weights.
+    files:
+    - tanishi/foundry/post_train.py
+    - tests/foundry/test_post_train.py
+    acceptance:
+    - Preference tuning runs on L4's pairs with MLX and is judged on held-out pairs and the Arena.
+    - Personal post-training stays on the device.
+  - id: X6
+    title: Model Forge
+    tier: T4
+    pillar: foundry
+    branch: agent/foundry
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - X4
+    goal: 'Manages her models as replaceable parts: trained adapters are registered, compared and promoted.'
+    files:
+    - tanishi/foundry/models.py
+    - tests/foundry/test_models.py
+    acceptance:
+    - Every model or adapter has a lineage record and Arena scores.
+    - Promotion needs an Arena win over the parent and a passed Continuity Test.
+  - id: X3
+    title: Architecture Forge
+    tier: T4
+    pillar: foundry
+    branch: agent/foundry
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - E1
+    goal: 'Search over agent topology: memory, planner and routing variants as candidates in the archive.'
+    files:
+    - tanishi/foundry/architecture.py
+    - tests/foundry/test_architecture.py
+    acceptance:
+    - Topology variants are genomes in the evolution archive, judged by the same evaluator.
+    - Structural hypotheses from the compiler's pass 8 become candidates here.
+  - id: X2
+    title: Joint Intelligence Search
+    tier: T4
+    pillar: foundry
+    branch: agent/foundry
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - E1
+    - X3
+    - X4
+    goal: One search over data mix, tiny-model architecture, optimizer and sampling with MLX, judged as one candidate.
+    files:
+    - tanishi/foundry/joint.py
+    - tests/foundry/test_joint.py
+    acceptance:
+    - A candidate is one point in the joint space, trained and judged end to end inside a budget.
+    - Results are attributed per coordinate with ablation.
+  - id: X9
+    title: Hardware Forge
+    tier: T4
+    pillar: foundry
+    branch: agent/foundry
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - X5
+    goal: Kernel optimization with verified speed-ups on Apple silicon.
+    files:
+    - tanishi/foundry/kernels.py
+    - tests/foundry/test_kernels.py
+    acceptance:
+    - A candidate kernel must match the reference output within tolerance on random inputs before it is timed.
+    - A speed-up counts only if it beats noise over seeded repeats on the target machine.
+  - id: DN1
+    title: Distributed Intelligence Network v0
+    tier: T4
+    pillar: network
+    branch: agent/network
+    owner: swarm
+    protected: false
+    size: M
+    depends_on:
+    - CS6
+    - L3
+    goal: Two Tanishi instances share a discovery as a gene through the privacy gate, and no personal memory ever crosses.
+    files:
+    - tanishi/network/genes.py
+    - tests/network/test_genes.py
+    acceptance:
+    - A gene is a skill or strategy with its evidence and no personal data.
+    - The privacy gate scrubs, then runs a reconstruction test; a gene that leaks anything about a person is refused.
+    - The receiving instance runs the gene through its own Arena before using it.
+  - id: G4
+    title: A discovery that travels (gate)
+    tier: T1
+    pillar: milestone
+    branch: human/gates
+    owner: human
+    protected: false
+    size: S
+    depends_on:
+    - E4
+    - E6
+    - RE1
+    - G2
+    goal: The first sign of the Expansion.
+    acceptance:
+    - A capability or strategy no human authored is found by Unknown Discovery, verified and retained.
+    - It raises results in a second, different task cluster by more than noise, and Causal Attribution assigns the gain to it.
