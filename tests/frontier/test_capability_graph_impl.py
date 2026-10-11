@@ -1,6 +1,9 @@
 """E3 implementer's tests: what the exam leaves to the implementation (seed contents, trace wiring, the CLI)."""
+import itertools
 import json
+import random
 import sqlite3
+import time
 
 import pytest
 
@@ -250,3 +253,96 @@ def test_cli_reads_one_days_traces(tmp_path, monkeypatch, capsys):
     assert clustering.main(["2026-10-11"]) == 0
     assert capsys.readouterr().out == ""
     assert clustering.main(["../etc"]) == 2
+
+
+# ---------------------------------------------------------------- repair round 2 (RT-4..RT-9)
+
+def test_candidate_instances_are_the_clusters_task_ids_and_it_leaves_missing(g):
+    steps = [{"trace_id": f"t{k}", "text": "tool.read_file Boom", "family": "tool_use"} for k in range(3)]
+    steps.append({"trace_id": "bad\x00id", "text": "tool.read_file Boom", "family": "tool_use"})
+    [cand] = clustering.nightly(g, steps)
+    assert cand.instances == ("t0", "t1", "t2")  # the id that cannot be an instance id is left out
+    assert g.record_outcome(cand.id, "t1", passed=True).state == "weak"
+
+
+def test_accented_words_are_words():
+    assert clustering._normal("Café Échec") == "café échec"
+    steps = [{"trace_id": f"a{k}", "text": "outil.lire Échec", "family": "f"} for k in range(3)]
+    assert [c.size for c in clustering.cluster_failures(steps)] == [3]
+
+
+def test_empty_steps_are_dropped_before_they_can_join_a_cluster():
+    steps = [{"trace_id": f"t{k}", "text": "tool.read_file KeyError", "family": "f"} for k in range(3)]
+    steps += [{"trace_id": "t9", "text": "  \x00 ", "family": "f"}, {"trace_id": "t8", "text": None, "family": "f"}]
+    [c] = clustering.cluster_failures(steps)
+    assert c.trace_ids == ("t0", "t1", "t2")
+
+
+def test_the_last_attempt_of_a_task_decides():
+    failed_then_ok = [_span("r1", None, "error", 1.0, error="Failed"), _span("c1", "r1", "error", 2.0, error="E"),
+                      _span("r2", None, "ok", 3.0)]
+    ok_then_failed = [_span("r1", None, "ok", 1.0), _span("c1", "r1", "error", 2.0, name="old", error="E1"),
+                      _span("r2", None, "error", 3.0, error="Failed"),
+                      _span("c2", "r2", "error", 4.0, name="tool.write_file", error="E2")]
+    assert clustering.steps_from_spans(failed_then_ok) == []
+    assert clustering.steps_from_spans(ok_then_failed) == [
+        {"trace_id": "t1", "text": "tool.write_file E2", "family": None}]
+
+
+def test_a_task_with_no_root_is_not_a_failure():
+    assert clustering.steps_from_spans([_span("a", "b", "error", 1.0), _span("b", "a", "error", 2.0)]) == []
+
+
+def _brute_components(texts):
+    words = [frozenset(t.split()) for t in texts]
+    comp = {t: {t} for t in texts}
+    for i, j in itertools.combinations(range(len(texts)), 2):
+        a, b = words[i], words[j]
+        if a and b and len(a & b) > clustering.SIMILARITY * len(a | b) and comp[texts[i]] is not comp[texts[j]]:
+            merged = comp[texts[i]] | comp[texts[j]]
+            for t in merged:
+                comp[t] = merged
+    return sorted({tuple(sorted(c)) for c in map(frozenset, comp.values())})
+
+
+def test_prefix_filtered_linking_equals_comparing_every_pair():
+    rng = random.Random(20261012)
+    vocab = list("abcdefghij")
+    for _ in range(300):
+        texts = sorted({" ".join(sorted(set(rng.choices(vocab, k=rng.randint(1, 6)))))
+                        for _ in range(rng.randint(2, 40))})
+        assert sorted(tuple(sorted(c)) for c in clustering._components(texts)) == _brute_components(texts), texts
+
+
+def test_eight_thousand_distinct_texts_link_in_under_a_second():
+    steps = [{"trace_id": f"p{i}", "text": f"tool.run_command Err{i} w{i * 7919 % 100003}", "family": "f"}
+             for i in range(8000)]
+    t0 = time.perf_counter()
+    clustering.cluster_failures(steps)
+    assert time.perf_counter() - t0 < 1.0
+
+
+def test_texts_over_the_family_cap_are_skipped_and_counted(g, monkeypatch, caplog):
+    monkeypatch.setattr(clustering, "MAX_TEXTS_PER_FAMILY", 5)
+    steps = [{"trace_id": f"d{k}", "text": "think RateLimitError", "family": "f"} for k in range(3)]
+    steps += [{"trace_id": f"n{k}", "text": f"tool OneOff{k}", "family": "f"} for k in range(10)]
+    with caplog.at_level("WARNING", logger="tanishi.frontier.clustering"):
+        report = clustering.nightly_report(g, steps)
+    assert report.skipped.capped_texts == 6  # 11 distinct texts, 5 kept: the densest first
+    assert [n.instances for n in report.new] == [("d0", "d1", "d2")]
+    assert "linking the first 5" in caplog.text
+
+
+def test_the_nightly_report_counts_malformed_rows_and_empty_steps(g):
+    steps = [{"trace_id": f"t{k}", "text": "tool.read_file KeyError", "family": "f"} for k in range(3)]
+    report = clustering.nightly_report(g, [*steps, None, "oops", 3, {"trace_id": "e", "text": ""}])
+    assert (len(report.new), report.clusters) == (1, 1)
+    assert (report.skipped.malformed_rows, report.skipped.empty_steps) == (3, 1)
+
+
+def test_cli_prints_the_report_to_stderr(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("TANISHI_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("TANISHI_CORE_STATE_DB", str(tmp_path / "cs.db"))
+    (tmp_path / "home" / "traces").mkdir(parents=True)
+    assert clustering.main(["2026-10-11"]) == 0
+    assert "0 new of 0 clusters; skipped 0 malformed rows" in capsys.readouterr().err

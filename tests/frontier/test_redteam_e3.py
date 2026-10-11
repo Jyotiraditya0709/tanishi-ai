@@ -54,7 +54,6 @@ def test_a_forecast_made_after_the_outcomes_does_not_earn_mastery(g):
 
 # RT-4 (medium) a missing candidate can never gain evidence ---------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason="RT-4: candidates are created with no instances; record_outcome always raises")
 def test_a_missing_candidate_can_receive_outcomes_for_the_failures_that_made_it(g):
     (cand,) = clustering.nightly(g, _steps("t", "tool.read_file Boom", "tool_use"))
     g.record_outcome(cand.id, "t0", True)  # the capability is practised, passes, and should leave `missing`
@@ -62,7 +61,6 @@ def test_a_missing_candidate_can_receive_outcomes_for_the_failures_that_made_it(
 
 # RT-5 (medium) non-ASCII failures collapse into one cluster ---------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason="RT-5: _normal drops every non-[a-z0-9_] character, so all such texts are ''")
 def test_unrelated_non_ascii_failures_are_not_one_cluster(g):
     texts = ["工具 读取失败", "ツール 書き込みエラー", "инструмент таймаут"]
     steps = [{"trace_id": f"a{i}", "text": t, "family": "f"} for i, t in enumerate(texts)]
@@ -71,14 +69,12 @@ def test_unrelated_non_ascii_failures_are_not_one_cluster(g):
 
 # RT-6 (medium) contentless steps become a capability ---------------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason="RT-6: three steps with no name and no error class register a candidate")
 def test_steps_with_no_text_do_not_register_a_candidate(g):
     assert clustering.nightly(g, _steps("e", "", "f")) == []
 
 
 # RT-7 (medium) a recovered error is counted as a failed task --------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason="RT-7: steps_from_spans treats any error span as a failed task")
 def test_a_retried_tool_error_under_a_successful_task_is_not_a_failure():
     recs = [
         {"task_id": "T", "span_id": "r", "parent_id": None, "status": "ok", "name": "think", "start_ts": 1.0,
@@ -91,7 +87,6 @@ def test_a_retried_tool_error_under_a_successful_task_is_not_a_failure():
 
 # RT-8 (medium) quadratic linking -----------------------------------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason="RT-8: _components compares every pair of distinct texts in a family")
 def test_clustering_a_nights_worth_of_distinct_failures_is_fast():
     steps = [{"trace_id": f"p{i}", "text": f"tool.run_command Err{i} w{i * 7919 % 100003}", "family": "f"}
              for i in range(8000)]
@@ -102,7 +97,6 @@ def test_clustering_a_nights_worth_of_distinct_failures_is_fast():
 
 # RT-9 (low) one bad row aborts the night ---------------------------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason="RT-9: a non-mapping row raises AttributeError out of cluster_failures")
 def test_a_malformed_step_row_is_skipped_not_fatal():
     good = _steps("g", "tool.read_file KeyError", "f")
     got = clustering.cluster_failures([*good, None, "oops", 3])  # type: ignore[list-item]
