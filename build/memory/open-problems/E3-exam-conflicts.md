@@ -5,6 +5,11 @@ makes the feature weaker than the card intends:
 
 ## A12: "explained" means "some node shares the family"
 
+**RESOLVED 2026-10-11 by the human.** The rule below ("What I would do instead") was adopted. The exam now pins it:
+`test_nightly_leaves_a_cluster_a_node_already_explains` (weak node, failures on its own instances) and the new
+`test_nightly_dense_cluster_inside_a_mastered_nodes_family_becomes_a_missing_candidate`. `clustering.explained()` in
+`tanishi/frontier/clustering.py` still holds the old rule until the implementer changes it; the new test fails until then.
+
 With the 12 seeds covering all 7 Practice families, **no failure cluster on a Practice task can ever become a
 candidate**. A dense cluster of `tool.read_file TimeoutError` in `tool_use` is "explained" by `tool.file_read`
 even if nothing in the graph is about timeouts. The nightly pass only proposes candidates for families the graph

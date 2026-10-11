@@ -1,6 +1,6 @@
 # E3 · Capability Graph limits (2026-10-11)
 
-Referenced from `tanishi/frontier/graph.py` and `clustering.py`. See decision 0024.
+Referenced from `tanishi/frontier/graph.py` and `clustering.py`. See decision 0027.
 
 - [ ] **Self-reported outcomes.** `record_outcome` trusts its caller, like SUB4's predictions (0021 rule 9).
       Anything can mark a node mastered by writing passes and a matching forecast. Wire it to Arena `experiments`

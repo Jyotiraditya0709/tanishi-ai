@@ -1,4 +1,4 @@
-# 0024 · The Capability Graph and nightly clustering (E3)
+# 0027 · The Capability Graph and nightly clustering (E3)
 
 Date: 2026-10-11. Decided by: the E3 implementer, adopting every name the exam pinned
 (`open-problems/E3-exam-assumptions.md`, A1..A14). R1 (Hypothesis Engine), AR4 and M1 read this graph.

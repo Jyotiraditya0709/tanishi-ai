@@ -35,8 +35,10 @@ decision 0023 span records (`span_id`, `parent_id`, `name`, `status`, `error`, `
   class of the decisive step; ids and lengths only, decision 0023 rule 10) and optional `family`. Returns objects with
   `.size` and `.trace_ids`. Similarity is the implementer's (stdlib only). Dense means at least `min_size` distinct
   traces; one trace counts once; a trace is in at most one cluster; input order never matters.
-- **A12 - Explained.** A cluster is explained by a node when the node's `task_family` equals the family of the cluster's
-  steps. (The card says only "a node explains".)
+- **A12 - Explained (changed 2026-10-11 by the human).** A node explains a cluster only when the cluster's failed tasks
+  are that node's own instances (trace id in `node.instances`) AND the node is already `weak` or `missing`. A cluster
+  inside a mastered node's family, or on tasks that are not the node's instances, is unexplained and becomes a
+  `missing` candidate. An existing candidate explains its own cluster (same deterministic id).
 - **A13 - Nightly.** `nightly(graph, steps, min_size=3)` returns the new candidates and registers each as a node with
   state `missing` and a deterministic id. Running it again on the same failures adds nothing and returns [].
 - **A14 - Hostile text.** Control characters, SQL and template markup in step text must not crash or reach node ids.

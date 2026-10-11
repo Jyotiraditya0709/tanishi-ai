@@ -558,11 +558,29 @@ def test_nightly_registers_an_unexplained_dense_cluster_as_missing_candidate(g):
     assert new[0].task_family  # a candidate still names a family to practise
 
 
+def _steps_on(g, nid, text, count, family):
+    """Failed attempts on the first `count` instances of node nid (the trace id is the Arena task id)."""
+    return [{"trace_id": i, "text": text, "family": family} for i in g.node(nid).instances[:count]]
+
+
 def test_nightly_leaves_a_cluster_a_node_already_explains(g):
+    # A12 (human decision 2026-10-11): the failed tasks are the node's own instances and the node is weak or missing.
     _node(g, "tools", family="tool_use")
-    found = clustering.nightly(g, _steps("t", SHELL, 5, family="tool_use"), min_size=3)
+    assert _fill(g, "tools", passes=3, n=10, predicted=0.3).state == "weak"
+    found = clustering.nightly(g, _steps_on(g, "tools", SHELL, 5, "tool_use"), min_size=3)
     assert found == []
     assert [n.id for n in g.nodes()] == ["tools"]
+
+
+def test_nightly_dense_cluster_inside_a_mastered_nodes_family_becomes_a_missing_candidate(g):
+    _node(g, "tools", family="tool_use")
+    assert _fill(g, "tools", passes=10, n=10, predicted=1.0).state == "mastered"
+    found = clustering.nightly(g, _steps_on(g, "tools", SHELL, 5, "tool_use"), min_size=3)
+    assert len(found) == 1
+    assert found[0].state == "missing"
+    assert found[0].task_family == "tool_use"
+    assert g.node("tools").state == "mastered"
+    assert len(g.nodes()) == 2
 
 
 def test_nightly_is_idempotent_for_the_same_failures(g):
