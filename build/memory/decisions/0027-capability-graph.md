@@ -22,7 +22,10 @@ Date: 2026-10-11. Decided by: the E3 implementer, adopting every name the exam p
 6. **Clustering.** Step text = decisive span name + error class. Words are `[a-z0-9_]+`, lowercased. Steps are only
    compared within one family; two steps link when Jaccard > 0.5 (strict); clusters are connected components.
    Missing family → `unassigned`.
-7. **Candidates.** A cluster is explained when some node has its family (A12) or its `candidate_id` already exists.
+7. **Candidates.** A cluster is explained when one node is `weak` or `missing` and every trace id in the cluster is
+   one of that node's instances (A12, human decision 2026-10-11), or when its `candidate_id` already exists.
+   Sharing the family is not enough: a cluster on a mastered or unexplored node's tasks, or spread over several
+   nodes, becomes a candidate.
    Each unexplained cluster becomes a node `missing.<family slug>.<sha256 of family + texts, 12 hex>` with
    verifier `tanishi.frontier.graph.no_verifier` (always scores 0) and no instances. Explanation is judged against
    the graph as it stood before the run.

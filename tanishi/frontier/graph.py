@@ -10,7 +10,7 @@ capability requires another, fails together with it, or composes into it.
     g.set_predicted_rate("code.fix_bug", 0.8)   # what she expects to score
     g.node("code.fix_bug").state                # mastered | weak | missing | correlated | unexplored
 
-Mastered: at least 90% on the sealed instances, and her predicted rate within 10 points of the real one (decision 0024).
+Mastered: at least 90% on the sealed instances, and her predicted rate within 10 points of the real one (decision 0027).
 """
 from __future__ import annotations
 
@@ -377,7 +377,7 @@ class CapabilityGraph:
 
 _P = "tanishi.arena.practice."
 # (id, task family, verifier, instances). Instances are the AR2 Practice task ids until AR4 supplies sealed ones; each
-# task keeps its own verifier in its YAML, and the node's verifier is the one for its first instance (decision 0024).
+# task keeps its own verifier in its YAML, and the node's verifier is the one for its first instance (decision 0027).
 SEEDS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
     ("code.write_function", "coding", _P + "checks.slugify_fn", ("practice.slugify_fn", "practice.dedupe_fn")),
     ("code.fix_bug", "coding", _P + "checks.fix_bug_fn", ("practice.fix_bug_fn",)),
