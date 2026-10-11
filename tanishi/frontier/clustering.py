@@ -5,7 +5,8 @@ Each failed trace gives one decisive step: the earliest erroring span with no er
 (decision 0023 rule 10: ids and class names, never prompts or replies). Within a task family, steps that share more
 than half their words (Jaccard > `SIMILARITY`) are linked; each connected group is a cluster, and a cluster of at
 least `min_size` distinct traces is dense. Strict, because step texts are short: "tool.read_file TimeoutError" and
-"tool.read_file KeyError" share exactly half and must not chain. A dense cluster whose family no node has is registered as a `missing` node.
+"tool.read_file KeyError" share exactly half and must not chain. A dense cluster no node explains (see `explained`;
+a step's `trace_id` is the Arena task id, matched against node instances) is registered as a `missing` node.
 
     steps = steps_from_spans(records, families={"task-1": "tool_use"})
     clustering.nightly(CapabilityGraph(), steps)
@@ -157,9 +158,18 @@ def _components(texts: list[str]) -> list[list[str]]:
 
 # ---------------------------------------------------------------- nightly
 
+EXPLAINING_STATES = ("weak", "missing")  # states in which the graph already knows she fails there
+
+
 def explained(cluster: Cluster, nodes: Iterable[Node]) -> bool:
-    """A node explains a cluster when it practises the cluster's task family (exam assumption A12)."""
-    return any(n.task_family == cluster.family or n.id == cluster.candidate_id for n in nodes)
+    """A node explains a cluster when every failed task is one of its own instances and it is weak or missing (A12).
+
+    A cluster on a mastered or unexplored node's tasks, or spread over several nodes, is news. A cluster already
+    registered as a candidate (same `candidate_id`) is explained by that candidate, so a re-run adds nothing.
+    """
+    traces = set(cluster.trace_ids)
+    return any(n.id == cluster.candidate_id
+               or (n.state in EXPLAINING_STATES and traces <= set(n.instances)) for n in nodes)
 
 
 def nightly(graph: CapabilityGraph, steps: Iterable[Mapping[str, Any]], min_size: int = 3) -> list[Node]:

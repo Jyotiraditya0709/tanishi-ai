@@ -68,12 +68,23 @@ def test_planted_modes_are_recovered_exactly_and_noise_makes_no_cluster():
 
 
 def test_nightly_on_the_corpus_proposes_one_candidate_per_unexplained_mode(tmp_path):
+    # A12: a weak node explains the tool_use modes, whose failed tasks are all its own instances.
+    steps, truth = _corpus(1)
     g = graph.CapabilityGraph(tmp_path / "g.db")
-    g.add_node("tools", task_family="tool_use", verifier=graph.NO_VERIFIER)
-    steps, _ = _corpus(1)
+    g.add_node("tools", task_family="tool_use", verifier=graph.NO_VERIFIER, state="weak",
+               instances=sorted(tid for tid, m in truth.items() if MODES[m][0] == "tool_use"))
     new = clustering.nightly(g, steps)
     assert sorted(n.task_family for n in new) == ["coding", "coding", "reasoning", "reasoning"]
     assert clustering.nightly(g, steps) == []
+
+
+def test_nightly_on_the_corpus_ignores_family_without_a_failing_owner(tmp_path):
+    # The same tool_use node, unexplored: its family alone explains nothing, so all eight modes are candidates.
+    steps, truth = _corpus(1)
+    g = graph.CapabilityGraph(tmp_path / "g.db")
+    g.add_node("tools", task_family="tool_use", verifier=graph.NO_VERIFIER,
+               instances=sorted(tid for tid, m in truth.items() if MODES[m][0] == "tool_use"))
+    assert len(clustering.nightly(g, steps)) == len(MODES)
 
 
 if __name__ == "__main__":
