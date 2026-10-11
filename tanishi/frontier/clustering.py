@@ -2,9 +2,10 @@
 
 Each failed trace gives one decisive step: the earliest erroring span with no erroring child (a parent only says
 "a child failed"). Steps are `{"trace_id", "text", "family"}`, where text is the step's span name and error class
-(decision 0023 rule 10: ids and class names, never prompts or replies). Within a task family, steps whose word sets
-overlap by at least `SIMILARITY` (Jaccard) are linked; each connected group is a cluster, and a cluster of at least
-`min_size` distinct traces is dense. A dense cluster whose family no node has is registered as a `missing` node.
+(decision 0023 rule 10: ids and class names, never prompts or replies). Within a task family, steps that share more
+than half their words (Jaccard > `SIMILARITY`) are linked; each connected group is a cluster, and a cluster of at
+least `min_size` distinct traces is dense. Strict, because step texts are short: "tool.read_file TimeoutError" and
+"tool.read_file KeyError" share exactly half and must not chain. A dense cluster whose family no node has is registered as a `missing` node.
 
     steps = steps_from_spans(records, families={"task-1": "tool_use"})
     clustering.nightly(CapabilityGraph(), steps)
@@ -25,7 +26,7 @@ from typing import Any
 
 from tanishi.frontier.graph import NO_VERIFIER, CapabilityGraph, Node
 
-SIMILARITY = 0.5  # Jaccard of the steps' word sets
+SIMILARITY = 0.5  # linked when the Jaccard of two steps' word sets is strictly above this
 UNASSIGNED = "unassigned"  # family for steps that carry none
 MAX_TEXT_CHARS = 2000
 
@@ -146,7 +147,7 @@ def _components(texts: list[str]) -> list[list[str]]:
 
     for i, j in combinations(range(len(texts)), 2):
         a, b = words[i], words[j]
-        if a and b and len(a & b) >= SIMILARITY * len(a | b):
+        if a and b and len(a & b) > SIMILARITY * len(a | b):
             parent[root(i)] = root(j)
     out: dict[int, list[str]] = defaultdict(list)
     for i, t in enumerate(texts):
