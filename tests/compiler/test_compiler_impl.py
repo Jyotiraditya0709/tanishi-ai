@@ -161,3 +161,157 @@ def test_eval_pass4_candidates_catch_repeats_and_ignore_other_calls():
         false_alarms += bool(seen(tool, {"fresh": True}, "a different error"))
     assert hits == 2 * len(EVAL_FAILURES)
     assert false_alarms == 0
+
+
+# ---------------------------------------------------------------- repair round (red team 2026-10-11)
+
+
+def _ledger_exp(about="task:l1-impl", expected=True, conf=0.7, **kw):
+    pid = predictions.predict(about, {"success": expected}, conf)
+    d = _exp(**kw).to_dict()
+    d["prediction"] = {"id": pid, "expected": {"success": expected}, "confidence": conf}
+    return xp.Experience.from_dict(d)
+
+
+def test_surprise_and_the_record_use_the_ledger_row_not_the_experience():
+    exp = _ledger_exp(expected=True, conf=0.9)
+    d = exp.to_dict()
+    d["prediction"] = dict(d["prediction"], expected={"success": False}, confidence=0.5)
+    out = passes.compile_experience(xp.Experience.from_dict(d))
+    assert out[0].payload["surprise"] == pytest.approx(0.81)
+    assert _kinds("experience")[0]["prediction"]["confidence"] == 0.9
+
+
+def test_a_tool_prediction_is_refused_unresolved_and_nothing_is_recorded():
+    exp = _ledger_exp(about="tool:calc")
+    assert passes.compile_experience(exp) == []
+    assert _kinds("experience") == [] and _kinds("compiler_emit") == []
+    assert [r["reason"] for r in _kinds("compiler_refused")] == ["prediction is not a task prediction"]
+    predictions.resolve(exp.prediction["id"], {"success": True})  # still open for the registry
+
+
+@pytest.mark.parametrize("tier", ["frontier", "Sealed Vault", "sealed-vault", "sealed"])
+def test_sealed_tiers_log_only_the_verdict(tier):
+    reason = "expected 42 for hidden case 7"
+    d = _ledger_exp().to_dict()
+    d["context"] = {"tier": tier}
+    d["verifier_result"] = {"passed": False, "score": 0.25, "reason": reason}
+    passes.compile_experience(xp.Experience.from_dict(d))
+    assert _kinds("experience")[0]["verifier_result"] == {"passed": False}
+    assert reason not in json.dumps([e.payload for e in events.iter_events()])
+
+
+def test_a_practice_tier_keeps_the_verifier_reason():
+    d = _ledger_exp().to_dict()
+    d["context"] = {"tier": "practice"}
+    passes.compile_experience(xp.Experience.from_dict(d))
+    assert _kinds("experience")[0]["verifier_result"]["reason"] == "r"
+
+
+def test_an_experience_hands_out_copies_at_every_depth():
+    exp = _exp(actions=[{"tool": "a", "input": {"deep": {"x": [1]}}, "output": "", "ok": False}])
+    exp.actions[0]["input"]["deep"]["x"].append(2)
+    exp.actions[0]["ok"] = True
+    exp.context["k"] = "v"
+    assert exp.actions[0] == {"tool": "a", "input": {"deep": {"x": [1]}}, "output": "", "ok": False}
+    assert exp.context == {}
+
+
+def test_a_cycle_is_refused_up_front():
+    ctx: dict = {}
+    ctx["self"] = ctx
+    d = _exp().to_dict()
+    d["context"] = ctx
+    with pytest.raises(ValueError):
+        xp.Experience.from_dict(d)
+
+
+def test_compiling_again_lands_nothing_new_and_says_why():
+    exp = _exp()
+    first = passes.compile_experience(exp)
+    again = passes.compile_experience(exp)
+    assert all(e.landed for e in first)
+    assert not any(e.landed for e in again)
+    assert all(e.reason.startswith("already landed") for e in again)
+    assert len(_kinds("experience")) == 1
+
+
+def test_many_distinct_failures_land_at_most_ten_beliefs_and_a_storm_keeps_its_count():
+    acts = [{"tool": "t", "input": {"i": i}, "output": f"error {i}", "ok": False} for i in range(30)]
+    acts += [{"tool": "storm", "input": {}, "output": "503", "ok": False}] * 5
+    passes.compile_experience(_exp(actions=acts))
+    assert len(beliefs.find(predicate="failed_with")) == 10
+    exp2 = _exp(actions=[{"tool": "storm", "input": {}, "output": "503", "ok": False}] * 5)
+    passes.compile_experience(exp2)
+    storm = [p for p in _kinds("compiler_emit") if p.get("evidence", {}).get("tool") == "storm"]
+    assert storm[-1]["evidence"]["count"] == 5
+
+
+def test_a_recovered_failure_still_lets_the_real_failure_be_guarded():
+    acts = [{"tool": "fetch", "input": {"id": 7}, "output": "timeout", "ok": False},
+            {"tool": "fetch", "input": {"id": 7}, "output": "row", "ok": True},
+            {"tool": "parse", "input": {"s": "row"}, "output": "bad row", "ok": False}]
+    exp = _exp(actions=acts)
+    assert passes.outcome_analysis(exp)["decisive_step"] == 2
+    cand = [e for e in passes.compile_experience(exp) if e.kind == "skill_candidate"]
+    assert cand and cand[0].landed and cand[0].payload["step"] == 2
+
+
+def test_the_candidates_digest_is_the_compilers_digest_for_mixed_keys():
+    tool_input = {1: "a", "b": [{2: "x", "y": None}]}
+    exp = _exp(actions=[{"tool": "x", "input": tool_input, "output": "no", "ok": False}])
+    cand = next(e for e in passes.compile_experience(exp) if e.kind == "skill_candidate")
+    assert cand.landed, cand.reason
+    ns: dict = {}
+    exec(cand.payload["code"], ns)  # noqa: S102 - our own generated code
+    assert ns["input_digest"](tool_input) == xp.digest(tool_input)
+    assert ns["seen_failing"]("x", tool_input)
+
+
+@pytest.mark.parametrize("code,test,why", [
+    ("import sys\nF = sys._getframe(1)\ndef f():\n    return 1\n", "def test_f():\n    assert f() == 1\n",
+     "frames are out of reach"),
+    ("import gc\nO = gc.get_objects()\ndef f():\n    return 1\n", "def test_f():\n    assert f() == 1\n",
+     "gc is out of reach"),
+    ("try:\n    raise ValueError\nexcept ValueError as e:\n    F = e.__traceback__.tb_frame\n",
+     "def test_f():\n    pass\n", "a traceback's frame is out of reach"),
+    ("def f():\n    globals()['test_b'].__code__ = (lambda: None).__code__\n",
+     "def test_a():\n    f()\ndef test_b():\n    assert False\n", "code cannot rewrite a test"),
+    ("def f():\n    globals()['test_b'] = lambda: None\n",
+     "def test_a():\n    f()\ndef test_b():\n    assert False\n", "code cannot swap a test"),
+    ("def f():\n    return 1\n", "def test_f():\n    global f\n    f = lambda: 2\n    assert f() == 2\n",
+     "a test cannot rebind the code through global"),
+    ("def f():\n    return 1\n", "def test_f():\n    globals()['f'] = lambda: 2\n    assert f() == 2\n",
+     "a test cannot rebind the code through globals()"),
+    ("import os\nos._exit(0)\n", "def test_f():\n    pass\n", "exiting early is not passing"),
+    ("import ctypes\n", "def test_f():\n    pass\n", "ctypes is out of reach"),
+])
+def test_skill_harness_refuses_forgeries(code, test, why):
+    ok, _ = passes.run_skill_test(code, test, timeout_s=10)
+    assert ok is False, why
+
+
+def test_skill_harness_passes_an_honest_candidate():
+    ok, why = passes.run_skill_test("def f():\n    return 1\n", "def test_f():\n    assert f() == 1\n")
+    assert ok is True, why
+
+
+def test_skill_harness_uses_the_sandbox_when_it_is_present(monkeypatch):
+    calls = []
+
+    def fake_sandbox(script, *, stdin, timeout_s):
+        calls.append(timeout_s)
+        return passes._run_isolated(script, stdin, timeout_s)
+
+    monkeypatch.setattr(passes, "_sandbox", lambda: fake_sandbox)
+    ok, why = passes.run_skill_test("def f():\n    return 1\n", "def test_f():\n    assert f() == 1\n")
+    assert ok is True, why
+    assert calls == [passes.SKILL_TIMEOUT_S]
+
+
+def test_a_sandbox_that_fails_is_a_refusal(monkeypatch):
+    def broken(script, *, stdin, timeout_s):
+        raise OSError("no sandbox today")
+
+    monkeypatch.setattr(passes, "_sandbox", lambda: broken)
+    assert passes.run_skill_test("def f():\n    return 1\n", "def test_f():\n    assert f() == 1\n")[0] is False
