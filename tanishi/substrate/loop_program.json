@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "wall_time_s": 300,
+  "steps": [
+    {"name": "attend", "budget": 32},
+    {"name": "recall", "budget": 1},
+    {"name": "deliberate", "budget": 32},
+    {"name": "predict", "budget": 32},
+    {"name": "act", "budget": 32},
+    {"name": "reflect", "budget": 32}
+  ]
+}
