@@ -28,3 +28,28 @@ Date: 2026-10-11. Decided by: the L1 implementer, within the spec and the readin
     matching the tool plus the input's sha256 or the output signature. Inputs are kept as a digest, never as text.
     Its check runs code then test in `python -I`, temp cwd/HOME, env of PATH/HOME/TMPDIR/LANG only, 20 s timeout, and
     needs a per-run random marker printed after at least one `test_*` callable returned.
+
+## Revised in the repair round (2026-10-12, human decisions on the red team of 2026-10-11)
+
+Where these differ from the items above, these win.
+
+- **Item 1:** an attempt is its prediction id + the record's writer + a hash of its actions (`attempt_key`). A record
+  is adopted only from actor `compiler.experience` with the same attempt key and content hash; else a new record.
+  Find-or-record and each landing run under `experience.attempt_lock()`; an item already landed for this experience
+  (same pass, version, kind, stored payload digest) is logged as not landed, "already landed (event N)".
+- **Item 2:** the prediction is read from the CS5 ledger by id. Not there, or `about` not `task:...`: the experience
+  is refused (`compiler_refused {prediction_id, reason}`, nothing recorded or resolved). Otherwise the ledger's
+  `expected` and `confidence` replace the Experience's before anything runs, and only that task prediction is resolved.
+- **Item 3:** `check` sees the item as it will be stored (redacted, then clipped as `emit()` clips), and that form is
+  what lands and what `Emission.payload` holds.
+- **Item 8:** the decisive step skips a failure whose identical call (tool + input digest) later succeeded.
+- **Item 9:** failures are grouped by (tool, signature); at most 10 beliefs per experience, evidence carries `count`
+  and `steps` and is copied into the landed `compiler_emit`. Signatures redact as a structure before as text.
+- **Item 10:** the candidate matches tool, input and output by sha256 only, with redacted 120-char labels; its test holds
+  digests, never input text. A missing input is `{}`. No guard for a recovered failure. The harness runs only the
+  `test_*` functions defined in the test source, refuses a test that rebinds a name the code binds (or uses
+  `globals`/`exec`/...), keeps the nonce in the driver's locals behind an audit hook, and runs inside SB1's
+  `tanishi.sandbox.run_python` when it exists.
+- **New:** an Experience is deeply immutable and refuses nesting deeper than 31 levels (ValueError). An Experience with
+  `context["tier"]` of Frontier or Sealed Vault keeps only `{"passed"}` of its verifier result, in the log and in the
+  passes.
