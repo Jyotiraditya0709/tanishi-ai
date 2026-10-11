@@ -11,6 +11,7 @@ This loop continues until Claude has a final text response.
 import asyncio
 import json
 import logging
+import os
 import re
 import threading
 import uuid
@@ -39,10 +40,9 @@ def _record(kind: str, payload: dict, session_id: str | None) -> None:
 
 
 def _substrate_enabled() -> bool:
-    """TANISHI_SUBSTRATE=1 sends think() through the SUB2 loop. Imported lazily: flag off, nothing changes."""
-    from tanishi.substrate import loop
-
-    return loop.enabled()
+    """TANISHI_SUBSTRATE=1 sends think() through the SUB2 loop. Same test as `substrate.loop.enabled()`, read here
+    so that with the flag off think() never imports the substrate: flag off, nothing changes."""
+    return os.environ.get("TANISHI_SUBSTRATE", "").strip() == "1"
 
 
 @dataclass
@@ -276,7 +276,26 @@ class TanishiBrain:
 
     async def _think(self, user_input: str, mood: str, style: str, extra_context: str) -> BrainResponse:
         model = self._select_model(user_input)
+        system_prompt = self._system_prompt(user_input, mood, style, extra_context)
+        messages = self._build_messages(user_input)
 
+        if model == "claude":
+            response = await self._think_claude_with_tools(
+                system_prompt, messages, user_input=user_input
+            )
+        else:
+            response = await self._think_ollama(system_prompt, messages)
+
+        self.conversation_history.append(Message(role="user", content=user_input))
+        self.conversation_history.append(Message(role="assistant", content=response.content))
+
+        if self._response_ok_for_skill_learning(response):
+            self._schedule_skill_extraction(response)
+
+        return response
+
+    def _system_prompt(self, user_input: str, mood: str, style: str, extra_context: str) -> str:
+        """The persona with matching skills and the dream-cycle memories. Both think paths build it here."""
         skill_block = ""
         try:
             from tanishi.skills.skill_store import find_matching_skills, format_skills_for_context
@@ -308,45 +327,44 @@ class TanishiBrain:
         except Exception:
             pass
 
-        system_prompt = get_system_prompt(
+        return get_system_prompt(
             current_mode=mood,
             style=style,
             extra_context=merged_extra,
         )
-        messages = self._build_messages(user_input)
-
-        if model == "claude":
-            response = await self._think_claude_with_tools(
-                system_prompt, messages, user_input=user_input
-            )
-        else:
-            response = await self._think_ollama(system_prompt, messages)
-
-        self.conversation_history.append(Message(role="user", content=user_input))
-        self.conversation_history.append(Message(role="assistant", content=response.content))
-
-        if self._response_ok_for_skill_learning(response):
-            self._schedule_skill_extraction(response)
-
-        return response
 
     async def _think_substrate(self, user_input: str, mood: str, style: str, extra_context: str) -> BrainResponse:
-        """The SUB2 reasoning loop, used instead of `_think` when TANISHI_SUBSTRATE=1."""
-        from tanishi.substrate import loop as substrate_loop
-        from tanishi.substrate import router
+        """The SUB2 reasoning loop, used instead of `_think` when TANISHI_SUBSTRATE=1.
 
-        system_prompt = get_system_prompt(current_mode=mood, style=style, extra_context=extra_context.strip())
+        A loop that cannot be built (a bad or missing program file, a broken substrate import) runs nothing, so this
+        call falls back to `_think` and writes a `loop_fallback` event with the reason. A loop that was built never
+        falls back, since it may already have acted: whatever it ends with is the reply."""
+        session_id = getattr(self, "_active_session_id", None)
+        session_id = session_id if isinstance(session_id, str) else None
+        system_prompt = self._system_prompt(user_input, mood, style, extra_context)
         recent = self.conversation_history[-self.config.max_conversation_history:]
         history = "\n".join(f"{m.role}: {m.content}" for m in recent if m.role in ("user", "assistant"))
         personal = bool(getattr(self.config, "privacy_mode", False)) or classify_sensitivity(user_input) == "high"
-        cognitive = substrate_loop.CognitiveLoop(
-            router, self.memory_manager, self.tool_registry,
-            substrate_loop.StepBudget(max_steps=self.max_tool_loops),
-            generate=self._substrate_generate(system_prompt),
-            context=f"Conversation so far:\n{history}" if history else "",
-            personal=personal, local_up=bool(getattr(self, "ollama_available", False)),
-        )
-        result = await cognitive.run(user_input)
+        try:
+            from tanishi.substrate import loop as substrate_loop
+            from tanishi.substrate import router
+
+            cognitive = substrate_loop.CognitiveLoop(
+                router, self.memory_manager, self.tool_registry,
+                substrate_loop.StepBudget(max_steps=self.max_tool_loops),
+                generate=self._substrate_generate(system_prompt),
+                context=f"Conversation so far:\n{history}" if history else "",
+                personal=personal, local_up=bool(getattr(self, "ollama_available", False)),
+            )
+        except Exception as e:  # noqa: BLE001 - nothing ran yet, so the legacy path can take this call
+            _record("loop_fallback", {"reason": f"{type(e).__name__}: {e}"[:300]}, session_id)
+            return await self._think(user_input, mood, style, extra_context)
+        try:
+            result = await cognitive.run(user_input)
+        except Exception as e:  # noqa: BLE001 - run() reports its own failures; this is a last guard
+            result = substrate_loop.Result(content="I stopped before finishing (internal_error).", success=False,
+                                           stop_reason=substrate_loop.STOP_INTERNAL, steps=0,
+                                           detail=type(e).__name__)
         error = ""
         if not result.success:
             error = f"loop stopped: {result.stop_reason}" + (f" ({result.detail})" if result.detail else "")

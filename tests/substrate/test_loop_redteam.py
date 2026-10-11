@@ -65,7 +65,6 @@ def query(sql):
 
 # --- B1 (high): a degenerate model reply crashes the loop ------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason="B1 RecursionError escapes parse_reply")
 def test_b1_deeply_nested_reply_does_not_crash_the_loop():
     # json.loads raises RecursionError (not ValueError) on deep nesting; parse_reply only catches ValueError.
     res = go(make(Model(["[" * 100_000])))
@@ -74,7 +73,6 @@ def test_b1_deeply_nested_reply_does_not_crash_the_loop():
 
 # --- B2 (medium): an empty reply is a "successful" answer -------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason="B2 empty reply counts as success")
 @pytest.mark.parametrize("reply", ["", "   \n"])
 def test_b2_empty_reply_is_not_success(reply):
     res = go(make(Model([reply])))
@@ -83,7 +81,6 @@ def test_b2_empty_reply_is_not_success(reply):
 
 # --- B3 (medium): a cancelled task leaves no loop_stop and an unscored prediction --------------------------------
 
-@pytest.mark.xfail(strict=True, reason="B3 cancel leaves no loop_stop")
 def test_b3_cancel_during_a_tool_still_writes_loop_stop():
     class Slow(Tools):
         gate = None
@@ -111,7 +108,6 @@ def test_b3_cancel_during_a_tool_still_writes_loop_stop():
 
 # --- B4 (low): a fenced action with an upper-case tag is shown as the final answer, success=True ---------------
 
-@pytest.mark.xfail(strict=True, reason="B4 upper-case fence shown as answer")
 def test_b4_unparsed_action_json_is_not_a_successful_answer():
     raw = "```JSON\n" + act("t") + "\n```"
     tools = Tools()
@@ -121,7 +117,6 @@ def test_b4_unparsed_action_json_is_not_a_successful_answer():
 
 # --- B5 (low): a legitimate JSON answer that has an "action" key is thrown away as malformed ------------------
 
-@pytest.mark.xfail(strict=True, reason="B5 JSON answer with an action key discarded")
 def test_b5_json_answer_with_an_action_key_is_returned():
     answer = '{"action": "approve", "reason": "the numbers add up"}'
     res = go(make(Model([answer])))
@@ -130,7 +125,6 @@ def test_b5_json_answer_with_an_action_key_is_returned():
 
 # --- B6 (medium): recall sends the whole task as one LIKE pattern, so the real memory finds nothing ----------------
 
-@pytest.mark.xfail(strict=True, reason="B6 recall query is the whole task")
 def test_b6_recall_finds_a_relevant_memory_in_the_real_manager(tmp_path):
     from tanishi.memory.manager import MemoryEntry, MemoryManager
 
@@ -162,7 +156,6 @@ def _brain(monkeypatch):
 
 
 # B7 (medium): flag off, an import failure in the substrate still breaks think()
-@pytest.mark.xfail(strict=True, reason="B7 flag off still imports the substrate")
 def test_b7_flag_off_does_not_import_the_substrate(monkeypatch):
     import tanishi.substrate as pkg
 
@@ -174,7 +167,6 @@ def test_b7_flag_off_does_not_import_the_substrate(monkeypatch):
 
 
 # B8 (medium): flag on, a bad program file takes the whole brain down
-@pytest.mark.xfail(strict=True, reason="B8 bad program crashes think")
 def test_b8_bad_program_file_does_not_crash_think(monkeypatch, tmp_path):
     bad = tmp_path / "p.json"
     bad.write_text('{"version": 3, "steps": [{"name": "deliberate", "budget": -1}]}')
@@ -185,7 +177,6 @@ def test_b8_bad_program_file_does_not_crash_think(monkeypatch, tmp_path):
 
 
 # B9 (medium): flag on drops the skill block the legacy path puts in the system prompt
-@pytest.mark.xfail(strict=True, reason="B9 flag on drops skills")
 def test_b9_flag_on_keeps_matching_skills_in_the_system_prompt(monkeypatch):
     import tanishi.skills.skill_store as store
     from tanishi.substrate import router as R

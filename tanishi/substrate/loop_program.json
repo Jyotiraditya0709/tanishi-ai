@@ -1,5 +1,6 @@
 {
-  "version": 1,
+  "version": 2,
+  "wall_time_s": 300,
   "steps": [
     {"name": "attend", "budget": 32},
     {"name": "recall", "budget": 1},
