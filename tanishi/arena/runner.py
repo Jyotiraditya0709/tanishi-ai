@@ -5,6 +5,8 @@ two processes, one after the other, each the leader of its own process group:
 
 1. The executor process runs `setup` (shell, cwd = temp home), then `executor(brief, candidate, seed)`. It gets a
    `TaskBrief`: the task without its verifier, so the verifier's path and expected answer never enter its memory.
+   It runs inside SB1's Sandbox: it can read the interpreter and sys.path, write only its temp home, and reach the
+   network only if the task is tagged `network`. Where no sandbox is available the attempt scores 0 as infra.
 2. Once that process group is killed, the verifier process runs `verifier(task, output)` in the same temp home.
 
 Both start from a minimal environment (PATH, LANG and the temp HOME, TANISHI_HOME, TANISHI_CORE_STATE_DB and TMPDIR,
@@ -31,11 +33,9 @@ import pickle
 import random
 import re
 import select
-import shutil
 import signal
 import subprocess
 import sys
-import tempfile
 import time
 import uuid
 from collections.abc import Callable, Iterable, Sequence
@@ -43,6 +43,7 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+import tanishi
 from tanishi.arena.task import Task, TaskBrief
 from tanishi.arena.verifiers import (
     CandidateFault,
@@ -52,8 +53,11 @@ from tanishi.arena.verifiers import (
     resolve,
 )
 from tanishi.core_state import migrate, open_db
+from tanishi.sandbox import Sandbox, checked_read_path
 
 STARTUP_TIMEOUT_S = 60.0  # starting Python and unpickling the payload; not charged to the task
+NETWORK_TAG = "network"  # a task with this tag grants its executor network access (SB1); without it there is none
+EXECUTOR_MEMORY_MB = 1024  # resident memory of the whole executor process tree
 MAX_REASON = 500
 MAX_MESSAGE = 8 * 1024 * 1024  # one JSON line from a child; a longer one is malformed
 # Set by the runner in every attempt; a caller cannot pass its own values through.
@@ -238,13 +242,25 @@ def _zero(kind: str, reason: str, *, cost: object = 0.0, error: object = None) -
 
 
 def _isolated_attempt(task: Task, candidate: str, seed: int, executor: Executor, passthrough: tuple[str, ...]) -> dict:
-    """Run one attempt in a fresh temp home; always returns {score, cost, reason, failure_kind, error}."""
-    home = Path(tempfile.mkdtemp(prefix="tanishi-arena-"))
-    try:
+    """Run one attempt in a fresh sandbox; always returns {score, cost, reason, failure_kind, error}.
+
+    The executor stage (setup and the candidate) runs confined by SB1's Sandbox: it reads only the interpreter and
+    the import path, writes only its scratch, and has no network unless the task carries the NETWORK_TAG. The
+    verifier stage runs afterwards, unconfined, in the same home, once every executor process is dead.
+    """
+    limit = STARTUP_TIMEOUT_S + task.timeout_s + 5  # the runner's own deadlines bite first; these are a backstop
+    # trusted=True: this stage runs the caller's executor and the task's setup, code the system wrote, and it needs
+    # the host interpreter and import path (Docker on macOS cannot run either). Code a model writes is run by the
+    # verifiers that execute it (run_python_tests), always with trusted=False. An executor that runs a candidate's
+    # own code (a git ref) must not come through here as is: build/memory/open-problems/SB1-repair-conflicts.md.
+    with Sandbox(network=NETWORK_TAG in task.tags, read_paths=_import_paths(), env_passthrough=passthrough,
+                 cpu_seconds=limit, wall_seconds=limit, memory_mb=EXECUTOR_MEMORY_MB, prefer_docker=False,
+                 trusted=True) as sb:
+        home = sb.home
         env = _prepare_home(home, passthrough)
         payload = {"brief": task.brief(), "setup": task.setup, "candidate": candidate, "seed": seed,
                    "executor": executor, "timeout_s": task.timeout_s}
-        msg, problem = _stage(home, env, "executor", payload, task.timeout_s)
+        msg, problem = _stage(home, env, "executor", payload, task.timeout_s, sandbox=sb)
         if problem is not None:
             return _stage_problem(problem, "candidate", task.timeout_s)
         produced = _read_executor_result(msg)
@@ -255,16 +271,45 @@ def _isolated_attempt(task: Task, candidate: str, seed: int, executor: Executor,
         if problem is not None:
             return {**_stage_problem(problem, "verifier", task.timeout_s), "cost": cost}
         return {**_read_verifier_result(msg), "cost": cost}
-    finally:
-        shutil.rmtree(home, ignore_errors=True)
+
+
+def _import_paths() -> list[str]:
+    """The entries of sys.path an executor needs to import its code, minus any the sandbox refuses as too broad.
+
+    Never the repo root (the folder holding the `tanishi` package) or the cwd: from those only their packages
+    (folders with an `__init__.py`) are granted, so `data/db.sqlite`, `.git` and the rest of the checkout stay
+    closed. The sandbox lets the candidate list the root's names, which the import needs."""
+    out: list[str] = []
+    cwd = os.path.realpath(os.getcwd())
+    repo = os.path.dirname(os.path.dirname(os.path.realpath(tanishi.__file__)))
+    for entry in sys.path:
+        p = os.path.realpath(entry or cwd)
+        if not os.path.exists(p):
+            continue
+        for q in _packages_in(p) if p in (cwd, repo) else [p]:
+            if q in out:
+                continue
+            try:
+                out.append(checked_read_path(q))
+            except (OSError, ValueError):
+                continue
+    return out
+
+
+def _packages_in(folder: str) -> list[str]:
+    try:
+        names = sorted(os.listdir(folder))
+    except OSError:
+        return []
+    return [os.path.join(folder, n) for n in names if os.path.isfile(os.path.join(folder, n, "__init__.py"))]
 
 
 def _prepare_home(home: Path, passthrough: tuple[str, ...]) -> dict[str, str]:
     """Make the attempt's TANISHI_HOME, migrated db and TMPDIR; return the only environment its processes get."""
     tanishi_home = home / ".tanishi"
-    tanishi_home.mkdir(mode=0o700)
+    tanishi_home.mkdir(mode=0o700, exist_ok=True)
     tmp = home / "tmp"
-    tmp.mkdir(mode=0o700)
+    tmp.mkdir(mode=0o700, exist_ok=True)
     db = tanishi_home / "core_state.db"
     conn = open_db(str(db))
     try:
@@ -279,19 +324,22 @@ def _prepare_home(home: Path, passthrough: tuple[str, ...]) -> dict[str, str]:
     return env
 
 
-def _stage(home: Path, env: dict[str, str], stage: str, payload: dict, timeout_s: float) -> tuple[dict | None, str | None]:
-    """Run one stage in its own process group and kill the whole group afterwards.
+def _stage(home: Path, env: dict[str, str], stage: str, payload: dict, timeout_s: float,
+           sandbox: Sandbox | None = None) -> tuple[dict | None, str | None]:
+    """Run one stage in its own process group (confined by `sandbox` if given) and kill the whole group afterwards.
 
     Returns (message, None), or (None, problem) with problem one of "start", "timeout", "died", "malformed".
     """
     read_fd, write_fd = os.pipe()
     proc = None
     try:
-        proc = subprocess.Popen(
-            [sys.executable, "-I", "-c", _BOOTSTRAP, str(write_fd)],
-            stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            cwd=home, env=env, pass_fds=(write_fd,), start_new_session=True,
-        )
+        argv = [sys.executable, "-I", "-c", _BOOTSTRAP, str(write_fd)]
+        io = {"stdin": subprocess.PIPE, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL,
+              "pass_fds": (write_fd,)}
+        if sandbox is not None:
+            proc = sandbox.popen(argv, cwd=home, **io)  # builds the same env as _prepare_home, plus its marker
+        else:
+            proc = subprocess.Popen(argv, cwd=home, env=env, start_new_session=True, **io)
         os.close(write_fd)
         write_fd = -1
         try:
@@ -317,6 +365,8 @@ def _stage(home: Path, env: dict[str, str], stage: str, payload: dict, timeout_s
             return None, "malformed"
     finally:
         if proc is not None:
+            if sandbox is not None:
+                sandbox.kill(proc)  # the whole run, also a child that left the process group
             _kill_group(proc)
         for fd in (read_fd, write_fd):
             if fd >= 0:

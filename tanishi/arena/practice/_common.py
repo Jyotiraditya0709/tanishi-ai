@@ -6,21 +6,23 @@ import math
 import os
 import re
 import select
-import signal
+import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from collections.abc import Callable
 from pathlib import Path
 
 from tanishi.arena.practice._code_harness import NotPlain, decode, encode
 from tanishi.arena.verifiers import Verdict, candidate_fault
+from tanishi.sandbox import Sandbox
 
 _FENCE = re.compile(r"```[A-Za-z0-9_+-]*\n(.*?)```", re.DOTALL)
 # Not glued to a word or a decimal point on either side: '7.5' and 'v3.12' hold no integer, '1,2' holds two.
 _INT = re.compile(r"(?<![\w.])[-+]?\d+(?!\w|\.\d)")
 CODE_TIMEOUT_S = 10
+CODE_STARTUP_S = 60  # starting the sandbox (a container on macOS) and the harness; not charged to the candidate
+CODE_MEMORY_MB = 1024
 HARNESS = Path(__file__).with_name("_code_harness.py")
 MAX_REPLY = 32 * 1024 * 1024
 
@@ -72,21 +74,39 @@ class _TimedOut(Exception):
 
 
 class _CodeProcess:
-    """The candidate's code in its own process (see _code_harness.py), with one deadline for everything."""
+    """The candidate's code in its own sandboxed process (see _code_harness.py), with one deadline for everything.
 
-    def __init__(self, cwd: str, timeout_s: float) -> None:
-        env = {"PATH": os.environ.get("PATH", os.defpath), "HOME": cwd, "TMPDIR": cwd}
-        if "LANG" in os.environ:
-            env["LANG"] = os.environ["LANG"]
-        self.deadline = time.monotonic() + timeout_s
-        self.proc = subprocess.Popen(
-            [sys.executable, "-I", str(HARNESS)], cwd=cwd, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL, start_new_session=True,
-        )
+    The harness, and with it the candidate's code, runs in SB1's Sandbox as code a model wrote (`trusted=False`): a
+    copy of the harness in scratch, no read path, no network, and the user's other processes out of sight (Docker on
+    macOS, Landlock on Linux). No such backend here means RuntimeError: the code is never run unconfined. Only
+    JSON replies cross back; the verdict is made in this process."""
+
+    def __init__(self, timeout_s: float) -> None:
+        budget = timeout_s + CODE_STARTUP_S
+        self.sb = Sandbox(trusted=False, prefer_docker=False, network=False, cpu_seconds=budget,
+                          wall_seconds=budget + 5, memory_mb=CODE_MEMORY_MB)
+        self.sb.open()
+        try:
+            shutil.copyfile(HARNESS, self.sb.workdir / HARNESS.name)
+            self.proc = self.sb.popen([sys.executable, "-I", HARNESS.name], stdin=subprocess.PIPE,
+                                      stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        except BaseException:
+            self.sb.close()
+            raise
         self.out = self.proc.stdin.fileno()
         self.inp = self.proc.stdout.fileno()
         os.set_blocking(self.out, False)
         self.buf = b""
+        self.deadline = time.monotonic() + CODE_STARTUP_S
+        try:
+            ready = self._reply()
+        except (_TimedOut, EOFError, ValueError, CandidateError) as e:
+            self.close()
+            raise RuntimeError("the sandbox for candidate code did not start") from e
+        if ready != {"ready": True}:
+            self.close()
+            raise RuntimeError("the sandbox for candidate code did not start")
+        self.deadline = time.monotonic() + timeout_s  # the candidate's clock starts once the harness is up
 
     def _left(self) -> float:
         left = self.deadline - time.monotonic()
@@ -103,6 +123,9 @@ class _CodeProcess:
                 data = data[os.write(self.out, data):]
             except BrokenPipeError as e:
                 raise EOFError from e
+        return self._reply()
+
+    def _reply(self) -> dict:
         while b"\n" not in self.buf:
             if not select.select([self.inp], [], [], self._left())[0]:
                 raise _TimedOut
@@ -137,16 +160,15 @@ class _CodeProcess:
 
     def close(self) -> None:
         try:
-            os.killpg(self.proc.pid, signal.SIGKILL)
-        except (ProcessLookupError, PermissionError, AttributeError):
-            pass
-        self.proc.kill()
-        self.proc.wait()
-        for f in (self.proc.stdin, self.proc.stdout):
-            try:
-                f.close()
-            except OSError:
-                pass
+            self.sb.kill(self.proc)
+            self.proc.wait()
+            for f in (self.proc.stdin, self.proc.stdout):
+                try:
+                    f.close()
+                except OSError:
+                    pass
+        finally:
+            self.sb.close()  # kills anything left and deletes scratch
 
 
 def run_python_tests(
@@ -161,38 +183,39 @@ def run_python_tests(
 
     The decision is made in this process, after the candidate answers, from values it returned: no secret, nonce or
     expected value is ever on the candidate's command line, in its environment or on its pipe, so there is nothing
-    to print to score (RT-AR2-1). The candidate's process gets PATH, LANG and a temp HOME/TMPDIR only (RT-AR2-2).
-    Code that runs past `timeout_s` (all calls together) is the candidate's failure.
+    to print to score (RT-AR2-1). The candidate's process gets the sandbox's built environment only: PATH, LANG and
+    a HOME/TMPDIR in its scratch (RT-AR2-2). Code that runs past `timeout_s` (all calls together, from the moment
+    the sandbox is up) is the candidate's failure.
 
-    Known limit: the candidate runs as the same OS user, so in-process tricks are out of reach but a determined
-    program could still try to read this process's files. Real sandboxing comes later.
+    The candidate's code runs in SB1's Sandbox (see _CodeProcess): it reads nothing of this machine but the
+    interpreter and writes only its scratch. Where no sandbox can isolate it, this raises RuntimeError (the verifier
+    fails; the candidate is not scored on an unconfined run).
     """
     got = text_of(output)
     if got is None:
         return Verdict(0.0, "empty output")
-    with tempfile.TemporaryDirectory() as cwd:
-        code = _CodeProcess(cwd, timeout_s)
+    code = _CodeProcess(timeout_s)
+    try:
         try:
-            try:
-                loaded = code.ask({"code": code_of(got)})
-            except (EOFError, ValueError, CandidateError):
-                return Verdict(0.0, "code did not load")
-            names = loaded.get("names")
-            if loaded.get("loaded") is not True or not isinstance(names, list):
-                return Verdict(0.0, "code did not load")
-            namespace = dict(given or {})
-            namespace.update({n: code.proxy(n) for n in names if isinstance(n, str) and n.isidentifier()})
-            try:
-                if callable(tests):
-                    tests(namespace)
-                else:
-                    exec(compile(tests, "<tests>", "exec"), namespace)  # noqa: S102 - our own asserts
-            except _TimedOut:
-                raise
-            except Exception:  # noqa: BLE001 - an assert, a failed call, a missing function: all a fail
-                return Verdict(0.0, "tests failed")
-            return Verdict(1.0, "tests passed")
+            loaded = code.ask({"code": code_of(got)})
+        except (EOFError, ValueError, CandidateError):
+            return Verdict(0.0, "code did not load")
+        names = loaded.get("names")
+        if loaded.get("loaded") is not True or not isinstance(names, list):
+            return Verdict(0.0, "code did not load")
+        namespace = dict(given or {})
+        namespace.update({n: code.proxy(n) for n in names if isinstance(n, str) and n.isidentifier()})
+        try:
+            if callable(tests):
+                tests(namespace)
+            else:
+                exec(compile(tests, "<tests>", "exec"), namespace)  # noqa: S102 - our own asserts
         except _TimedOut:
-            return candidate_fault("code timed out")
-        finally:
-            code.close()
+            raise
+        except Exception:  # noqa: BLE001 - an assert, a failed call, a missing function: all a fail
+            return Verdict(0.0, "tests failed")
+        return Verdict(1.0, "tests passed")
+    except _TimedOut:
+        return candidate_fault("code timed out")
+    finally:
+        code.close()

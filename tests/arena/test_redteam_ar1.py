@@ -104,10 +104,10 @@ def test_partial_run_leaves_no_rows(outer_db, tmp_path):
     # decision 0012 item 7: rows are written in one transaction at the end, so a run killed after its first
     # attempt finished leaves nothing behind. The second attempt waits until the parent kills the whole run.
     (tmp_path / "hang_second.py").write_text(
-        "import pathlib, time\n"
+        "import os, pathlib, time\n"
         "def ex(brief, candidate, seed):\n"
         "    if brief.id == 'rt-2':\n"
-        f"        pathlib.Path({str(tmp_path / 'second_started')!r}).write_text('x')\n"
+        "        pathlib.Path(os.environ['HOME'], 'second_started').write_text('x')\n"
         "        time.sleep(20)\n"
         "    return 'an answer'\n"
     )
@@ -121,10 +121,15 @@ def test_partial_run_leaves_no_rows(outer_db, tmp_path):
         "from tanishi.arena.runner import run\n"
         "run([_task('always_one', n=1), _task('always_one', n=2)], 'cfg', seeds=1, executor=ex)\n"
     )
-    proc = subprocess.Popen([sys.executable, str(script)], env=os.environ.copy())
+    # The executor runs in the sandbox and may write only its own home, so it signals "started" there. That home
+    # lives in a tanishi-sandbox-* scratch folder under the child's TMPDIR, which the parent polls from outside.
+    child_tmp = tmp_path / "child_tmp"
+    child_tmp.mkdir()
+    env = dict(os.environ, TMPDIR=str(child_tmp))
+    proc = subprocess.Popen([sys.executable, str(script)], env=env)
     try:
         deadline = time.monotonic() + 60
-        while not (tmp_path / "second_started").exists():
+        while not list(child_tmp.glob("tanishi-sandbox-*/home/second_started")):
             assert proc.poll() is None and time.monotonic() < deadline, "the run ended before the second attempt began"
             time.sleep(0.05)
         proc.kill()  # the first attempt has finished; the run dies before it can write

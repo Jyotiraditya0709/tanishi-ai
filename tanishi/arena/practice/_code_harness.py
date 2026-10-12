@@ -1,7 +1,8 @@
 """The process that hosts a candidate's code for `run_python_tests`. Standard library only: it runs as a script with
 `python -I`, so nothing of the repo is importable from it.
 
-Protocol, one JSON object per line. The verifier sends {"code": source}; this process runs it and answers
+Protocol, one JSON object per line. This process first says {"ready": true} (so starting a sandbox is not charged
+to the candidate's time). The verifier sends {"code": source}; this process runs it and answers
 {"loaded": true, "names": [callables it defined]} (or {"loaded": false}). Then each {"call": name, "args": [...]}
 gets {"ok": result, "args": [args after the call]} or {"raised": exception class name}.
 
@@ -64,6 +65,7 @@ def main() -> None:
         reply.write(json.dumps(msg) + "\n")
         reply.flush()
 
+    send({"ready": True})
     first = json.loads(requests.readline())
     namespace: dict = {"__name__": "__candidate__"}
     try:
