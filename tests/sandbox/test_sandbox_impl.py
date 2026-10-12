@@ -80,7 +80,52 @@ def test_run_python_tests_fails_closed_without_an_isolating_backend(monkeypatch)
         _common.run_python_tests("def f(x):\n    return x\n", "assert f(1) == 1")
 
 
-def test_untrusted_candidate_cannot_find_another_processes_environment():
+# Every read, listing and sysctl is wrapped: a block (PermissionError, any OSError) is counted, never raised, so the
+# report is always printed. "Blocked" counts as "not found". argv: [want reversed, holder pid, control file name].
+_FIND_ENV = """
+import ctypes, json, os, sys
+want = sys.argv[1][::-1].encode()  # sent reversed, so the probe's own argv does not hold the token
+out = {"found": False, "blocked": 0, "control": False}
+
+def read(path):
+    try:
+        with open(path, "rb") as f:
+            return f.read()
+    except OSError:  # PermissionError, FileNotFoundError, ...
+        out["blocked"] += 1
+        return b""
+
+def listdir(path):
+    try:
+        return os.listdir(path)
+    except OSError:
+        out["blocked"] += 1
+        return []
+
+out["control"] = read(sys.argv[3]) == b"CONTROL"  # a file in its own cwd: proves read() reports what it can see
+pids = {p for p in listdir("/proc") if p.isdigit()} | {sys.argv[2]}  # the holder's pid, should listing be refused
+for pid in sorted(pids):
+    for leaf in ("environ", "cmdline"):
+        out["found"] = out["found"] or want in read(f"/proc/{pid}/{leaf}")
+if sys.platform == "darwin":
+    try:
+        libc = ctypes.CDLL("/usr/lib/libSystem.B.dylib", use_errno=True)
+    except OSError:
+        out["blocked"] += 1
+        libc = None
+    for pid in range(2, 100000) if libc else ():
+        mib = (ctypes.c_int * 3)(1, 49, pid)  # CTL_KERN, KERN_PROCARGS2
+        size = ctypes.c_size_t(0)
+        if libc.sysctl(mib, 3, None, ctypes.byref(size), None, 0) != 0 or not size.value:
+            continue
+        buf = ctypes.create_string_buffer(size.value)
+        if libc.sysctl(mib, 3, buf, ctypes.byref(size), None, 0) == 0:
+            out["found"] = out["found"] or want in buf.raw[: size.value]
+print(json.dumps(out))
+"""
+
+
+def test_untrusted_candidate_cannot_find_another_processes_environment(tmp_path):
     """The candidate path of red-team break 2: with trusted=False the run is in a container (macOS) or under
     Landlock (Linux), so another process's environment is out of reach however it is asked for."""
     try:
@@ -90,32 +135,21 @@ def test_untrusted_candidate_cannot_find_another_processes_environment():
     token = _token()
     holder = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"], start_new_session=True,
                               env={"PATH": os.environ.get("PATH", ""), "SB1_IMPL_FAKE_KEY": token})
+    args = [token[::-1], str(holder.pid), "control.txt"]
     try:
+        # the control: unconfined, the same probe finds the token, so a False below is the sandbox's doing
+        (tmp_path / "control.txt").write_text("CONTROL")
+        free = subprocess.run([sys.executable, "-I", "-c", _FIND_ENV, *args], cwd=tmp_path, capture_output=True,
+                              text=True, timeout=120, check=True)
+        unconfined = json.loads(free.stdout)
+        assert unconfined["found"] and unconfined["control"], free
         with sb:
             assert sb.backend in ("docker", "landlock")
-            # the token is sent reversed, so the candidate's own argv does not hold it
-            res = _run(sb, f"""
-                import ctypes, os, sys
-                want, found = {token[::-1]!r}[::-1].encode(), False
-                for pid in os.listdir("/proc") if os.path.isdir("/proc") else []:
-                    for leaf in ("environ", "cmdline"):
-                        try:
-                            found = found or want in open(f"/proc/{{pid}}/{{leaf}}", "rb").read()
-                        except OSError:
-                            pass
-                if sys.platform == "darwin":  # only reached if a macOS backend ever ran this
-                    libc = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
-                    for pid in range(2, 100000):
-                        mib = (ctypes.c_int * 3)(1, 49, pid)
-                        size = ctypes.c_size_t(0)
-                        if libc.sysctl(mib, 3, None, ctypes.byref(size), None, 0) == 0 and size.value:
-                            buf = ctypes.create_string_buffer(size.value)
-                            if libc.sysctl(mib, 3, buf, ctypes.byref(size), None, 0) == 0:
-                                found = found or want in buf.raw[: size.value]
-                print("DONE", found)
-                """)
-        assert "DONE" in res.stdout, res
-        assert "DONE False" in res.stdout
+            (sb.workdir / "control.txt").write_text("CONTROL")
+            res = sb.run([sys.executable, "-I", "-c", _FIND_ENV, *args])
+        got = json.loads(res.stdout)
+        assert got["control"], res  # the probe could read its own scratch, so it was not blind
+        assert got["found"] is False, res
     finally:
         holder.kill()
         holder.wait()
@@ -155,19 +189,44 @@ def unix_server():
     d.rmdir()
 
 
+# Each attempt runs in a forked child that reports through a pipe, so a block of any kind (an error from socket()
+# itself, as the Linux seccomp filter gives, or a kill) is recorded and the parent still prints the whole report.
+# "socketpair" is the control: no path, allowed everywhere, so the child-and-pipe machinery is shown to work.
 _CONNECT_UNIX = """
-import json, socket, sys
-out = {}
-for p in json.loads(sys.argv[1]):
+import json, os, socket, sys
+
+def attempt(p):
+    if p == "socketpair":
+        a, b = socket.socketpair()
+        b.sendall(b"PAIR")
+        return "GOT " + a.recv(200).decode()
     s = socket.socket(socket.AF_UNIX)
     try:
         s.settimeout(3)
         s.connect(p)
-        out[p] = "GOT " + s.recv(200).decode(errors="replace")
-    except OSError as e:
-        out[p] = "ERR " + type(e).__name__
+        return "GOT " + s.recv(200).decode(errors="replace")
     finally:
         s.close()
+
+out = {}
+for p in json.loads(sys.argv[1]):
+    r, w = os.pipe()
+    pid = os.fork()
+    if pid == 0:
+        os.close(r)
+        try:
+            msg = attempt(p)
+        except BaseException as e:  # PermissionError (EPERM from the filter), FileNotFoundError, timeout, ...
+            msg = "BLOCKED " + type(e).__name__
+        os.write(w, msg.encode())
+        os._exit(0)
+    os.close(w)
+    with os.fdopen(r, "rb") as f:
+        msg = f.read().decode(errors="replace")
+    status = os.waitpid(pid, 0)[1]
+    if os.WIFSIGNALED(status):
+        msg = f"KILLED signal {os.WTERMSIG(status)}"
+    out[p] = msg or "BLOCKED no report"
 print(json.dumps(out))
 """
 
@@ -177,17 +236,18 @@ def test_docker_sock_and_ssh_agent_stay_unreachable(unix_server, network):
     """With or without a network grant, no unix socket outside scratch can be reached: the Docker daemon (root on the
     host), the user's ssh-agent, or a stand-in agent socket that is known to be listening."""
     planted, token = unix_server
-    probe = socket.socket(socket.AF_UNIX)
-    probe.connect(str(planted))  # the control: the planted agent answers outside the sandbox
-    assert probe.recv(200).decode() == token
-    probe.close()
     targets = [str(planted), "/var/run/docker.sock", str(Path.home() / ".docker" / "run" / "docker.sock")]
     if os.environ.get("SSH_AUTH_SOCK"):
         targets.append(os.environ["SSH_AUTH_SOCK"])
+    probe = [sys.executable, "-I", "-c", _CONNECT_UNIX, json.dumps([*targets, "socketpair"])]
+    # the control: unconfined, the same probe reaches the planted agent
+    free = json.loads(subprocess.run(probe, capture_output=True, text=True, timeout=60, check=True).stdout)
+    assert free[str(planted)] == "GOT " + token, free
     with _sb(network=network) as sb:
-        res = sb.run([sys.executable, "-I", "-c", _CONNECT_UNIX, json.dumps(targets)])
+        res = sb.run(probe)
     got = json.loads(res.stdout)
-    assert set(got) == set(targets), res
+    assert set(got) == {*targets, "socketpair"}, res
+    assert got.pop("socketpair") == "GOT PAIR", res  # the probe worked inside the sandbox
     reached = {p: v for p, v in got.items() if v.startswith("GOT")}
     assert not reached, f"unix sockets reachable from the sandbox (network={network}): {sorted(reached)}"
 

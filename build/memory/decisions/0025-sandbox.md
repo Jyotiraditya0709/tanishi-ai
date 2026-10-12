@@ -38,6 +38,12 @@ Decided by: the SB1 implementer within the card and the tester's assumptions A1-
    `network-bind (local ip)`, plus the system DNS resolver's socket and mach service). Never a unix socket by path, so
    docker.sock and ssh-agent stay out of reach. Linux: the seccomp filter refuses `socket(AF_UNIX)` always (Landlock
    before ABI 6 does not cover connect to a socket path); `socketpair()` stays allowed.
+   **The filter's action is EPERM, not a kill (CI-Linux round, 2026-10-12).** Every refused call (`socket(AF_UNIX)`,
+   chmod/chown by path, a foreign ABI) returns `SECCOMP_RET_ERRNO | EPERM`, so the candidate gets a clean
+   `PermissionError` it can report, and a test harness keeps running. Landlock likewise answers EACCES. Probes in
+   tests must therefore wrap the call that *creates* the socket, not only `connect()`, and every listing of `/proc`;
+   SB1's own probes record any error as "blocked" and run each socket attempt in a forked child, so even a kill
+   would be reported as one.
 6. **The worktree is copied, never reset in place** (A6). The copy leaves out `.git`, `.env*`, `*.db`, `*.sqlite*`
    and the guarded names, in any letter case. `rollback()` kills, clears file flags (`chflags 0`) and folder
    permissions in scratch, wipes it (raising if anything is left) and re-copies; `close()` does the same and raises if
