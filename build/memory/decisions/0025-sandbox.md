@@ -64,3 +64,12 @@ Decided by: the SB1 implementer within the card and the tester's assumptions A1-
    standard input (None = empty). It is killed after `timeout_s` seconds (wall and CPU; finite and > 0, container start
    included). `PythonResult` has `returncode`, `stdout`, `stderr` (text, each clipped to 64 KB, `PYTHON_OUTPUT_LIMIT`)
    and `timed_out`. On macOS without Docker it raises `SandboxUnavailable`; it never falls back to sandbox-exec.
+
+   **Seam round with L1 (2026-10-12).** L1's harness does `returncode, stdout = run_python(...)` (its reading in
+   `open-problems/L1-repair-conflicts.md` item 2), which raised `TypeError: cannot unpack non-iterable PythonResult
+   object`. So `PythonResult` also unpacks as `(returncode, stdout)`; the four fields stay. `script` and `stdin` take
+   str or bytes, `stdin` defaults to empty, `timeout_s` is int or float (not bool). L1's call is unchanged.
+   **Fallback (human decision 2026-10-12):** the sandbox itself never falls back. When `run_python` raises
+   `SandboxUnavailable`, the *caller* may run code the system wrote from a template (pass 4's generated skill test)
+   in its own isolated interpreter, logging `skill_test_unsandboxed {reason}`. Model-written code never takes that
+   fallback; for it `SandboxUnavailable` is a refusal (decision 0026, seam round).

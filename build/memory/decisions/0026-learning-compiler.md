@@ -50,6 +50,14 @@ Where these differ from the items above, these win.
   `test_*` functions defined in the test source, refuses a test that rebinds a name the code binds (or uses
   `globals`/`exec`/...), keeps the nonce in the driver's locals behind an audit hook, and runs inside SB1's
   `tanishi.sandbox.run_python` when it exists.
+- **Seam round with SB1 (2026-10-12, human decision on the fallback).** The skill test runs in
+  `tanishi.sandbox.run_python` (decision 0025 §9). SB1 made its result unpack as `(returncode, stdout)`, so L1's call
+  site is unchanged. If the sandbox raises `SandboxUnavailable`: pass 4's generated skill test is code the system
+  wrote from a template, not model-written code, so `_pass4_check` calls `run_skill_test(..., from_template=True)`
+  and that code alone falls back to the isolated interpreter, with one `skill_test_unsandboxed {reason}` event
+  (reason = the exception text, 120 chars). Every other caller of `run_skill_test` (default `from_template=False`),
+  and so any model-written code, gets the refusal "test could not run: SandboxUnavailable". Any other sandbox error
+  is a refusal for both.
 - **New:** an Experience is deeply immutable and refuses nesting deeper than 31 levels (ValueError). An Experience with
   `context["tier"]` of Frontier or Sealed Vault keeps only `{"passed"}` of its verifier result, in the log and in the
   passes.

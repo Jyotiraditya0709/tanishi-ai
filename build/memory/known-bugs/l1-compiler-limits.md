@@ -4,9 +4,15 @@ None of these breaks an acceptance line.
 
 - [ ] **Record and duplicate lookups are SQL scans with `json_extract`**, no index (fast at thousands of events; an
   index needs a migration in CS1's folder). `find_recorded` and `_landed_before` are the two queries.
-- [ ] **Skill tests are not sandboxed until SB1 lands.** Without `tanishi.sandbox`, `run_skill_test` uses `python -I`, a
-  temp cwd/HOME, a stripped env and an audit hook; the code still runs as this OS user and can read files and use the
-  network. The audit hook keeps the nonce out of reach of the routes known today; it is not a proof.
+- [x] **Skill tests are not sandboxed until SB1 lands.** Fixed in the SB1-L1 seam round (2026-10-12): skill tests run
+  in `tanishi.sandbox.run_python` (Docker on macOS); `tests/compiler/test_skill_test_sandbox_seam.py` proves a host
+  file is out of reach.
+- [ ] **Template skill tests still run unsandboxed when the sandbox is unavailable** (macOS without Docker): pass 4's
+  check falls back to `python -I`, a temp cwd/HOME, a stripped env and an audit hook, and logs
+  `skill_test_unsandboxed {reason}`. The code there runs as this OS user and can read files and use the network; it
+  is the compiler's own template, never model-written code (decision 0026, seam round).
+- [ ] **A sandboxed skill test that times out is reported as "test failed"**, not "test timed out": `run_python`
+  returns `timed_out=True` instead of raising `TimeoutError`, and `run_skill_test` reads only the pair. Both refuse.
 - [ ] **Recording and landing are a locked critical section, not one transaction.** A crash after a belief lands and
   before its `compiler_emit` lets a re-compile land that belief again (open-problems/L1-repair-conflicts.md item 1).
   If the event log is down, `_log` fails open, so the duplicate check cannot see the landing either.
