@@ -39,9 +39,18 @@ decision 0023 span records (`span_id`, `parent_id`, `name`, `status`, `error`, `
   are that node's own instances (trace id in `node.instances`) AND the node is already `weak` or `missing`. A cluster
   inside a mastered node's family, or on tasks that are not the node's instances, is unexplained and becomes a
   `missing` candidate. An existing candidate explains its own cluster (same deterministic id).
-- **A13 - Nightly.** `nightly(graph, steps, min_size=3)` returns the new candidates and registers each as a node with
-  state `missing` and a deterministic id. Running it again on the same failures adds nothing and returns [].
-- **A14 - Hostile text.** Control characters, SQL and template markup in step text must not crash or reach node ids.
+- **A13 - Creation states (human decision 2026-10-12).** `add_node` never creates a node in `weak` or `mastered`: it
+  raises ValueError for them. Those two states are reached only through recorded outcomes. `unexplored`, `missing` and
+  `correlated` can be given at creation. An exam test that needs a `weak` or `mastered` node records outcomes.
+- **A14 - Forecasts (human decision 2026-10-12).** A forecast counts toward `mastered` only when it comes from the CS5
+  prediction ledger, by prediction id (`forecast_from_ledger(node_id, prediction_id)`, about `capability:<node_id>`;
+  decision 0026 rule R1: the ledger is the only source of a prediction), and the ledger row is older than the first
+  outcome it is scored against. A forecast given directly (`set_predicted_rate`), or registered after the outcomes, is
+  stored as untrusted (`Node.forecast_trusted` is False) and the node cannot become `mastered`, even at 10 of 10 passed.
+- **A15 - Nightly** (was A13 until 2026-10-12). `nightly(graph, steps, min_size=3)` returns the new candidates and
+  registers each as a node with state `missing` and a deterministic id. Running it again on the same failures adds
+  nothing and returns [].
+- **A16 - Hostile text** (was A14 until 2026-10-12). Control characters, SQL and template markup in step text must not crash or reach node ids.
 
 ## Not covered, and why
 

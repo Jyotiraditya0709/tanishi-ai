@@ -5,6 +5,10 @@ Date: 2026-10-12. The card's rule: the test wins. Two fixes cannot be made witho
 
 ## RT-2: `add_node` accepts only `unexplored`, `missing`, `correlated`
 
+**RESOLVED by the human, 2026-10-12.** `add_node` never creates `weak` or `mastered` (assumption A13). The exam now
+reaches those states by recording outcomes and asserts that `add_node(state="mastered")` and `state="weak"` raise
+ValueError. The implementer makes the code follow and removes the xfail mark in `test_redteam_e3.py`.
+
 **Conflict.** `test_every_listed_state_can_be_stored` is parametrised over all five states and asserts
 `add_node(..., state="mastered")` and `state="weak"` store and read back that state. The red-team test
 `test_a_node_cannot_be_created_mastered_without_evidence` asserts the same call raises ValueError. Both
@@ -19,6 +23,12 @@ That is about four lines. My own `test_clustering_eval.py::test_nightly_on_the_c
 creates a `weak` node with `add_node(state="weak")`. Rewrite it to record failing outcomes instead.
 
 ## RT-3: a forecast counts only from the CS5 ledger, and only when older than the first outcome
+
+**RESOLVED by the human, 2026-10-12.** A forecast counts toward `mastered` only from the CS5 ledger, by prediction id,
+and only when the ledger row is older than the first outcome (assumption A14). The exam's `_fill` now writes the
+ledger row before the outcomes and passes its id to `forecast_from_ledger`; a new exam test pins that a direct
+forecast, or a ledger row registered after the outcomes, is untrusted and cannot master at 10 of 10. The implementer
+changes `_recompute` to count only `forecast_trusted` forecasts and removes the xfail mark.
 
 **Conflict.** The exam's `_fill` records every outcome first, then calls `set_predicted_rate`, then expects
 `mastered` in six tests: `test_mastered_at_ninety_percent_with_calibrated_prediction`,

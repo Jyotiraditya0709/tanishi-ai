@@ -1,8 +1,9 @@
 """E3 exam: Capability Graph and nightly failure clustering. Written by the testing agent from the spec card alone.
 
-The card names no function signatures. Every name below is an assumption, listed as A1..A14 in
-build/memory/open-problems/E3-exam-assumptions.md. If the implementer disagrees, say so in
-build/memory/open-problems/E3-exam-conflicts.md and the human decides; do not edit the tests.
+The card names no function signatures. Every name below is an assumption, listed as A1..A16 in
+build/memory/open-problems/E3-exam-assumptions.md. A13 (add_node never creates weak or mastered) and A14 (a forecast
+counts only from the CS5 ledger, older than the first outcome) are human decisions of 2026-10-12.
+If the implementer disagrees, say so in build/memory/open-problems/E3-exam-conflicts.md and the human decides; do not edit the tests.
 """
 import importlib
 import itertools
@@ -10,11 +11,19 @@ import random
 
 import pytest
 
+from tanishi.core_state import predictions
 from tanishi.frontier import clustering, graph
 
 FIVE_STATES = ("mastered", "weak", "missing", "correlated", "unexplored")
 THREE_KINDS = ("requires", "fails_together", "composes_into")
 VERIFIER = "tanishi.arena.practice.checks.slugify_fn"
+
+
+@pytest.fixture(autouse=True)
+def _core_state(tmp_path, monkeypatch):
+    """The graph and the CS5 ledger share one Core State db, as in production (A14); nothing touches ~/.tanishi."""
+    monkeypatch.setenv("TANISHI_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("TANISHI_CORE_STATE_DB", str(tmp_path / "graph.db"))
 
 
 @pytest.fixture
@@ -28,12 +37,27 @@ def _node(g, nid, n=10, family=None, **kw):
 
 
 def _fill(g, nid, passes, n, predicted):
-    """Record n outcomes (the first `passes` pass) on node nid's sealed instances and set her predicted rate."""
+    """Record n outcomes (the first `passes` pass) on node nid's sealed instances, with her forecast from the ledger.
+
+    A14: the forecast is written to the CS5 ledger (about "capability:<nid>") before the first outcome, and the graph
+    is then given its prediction id. A predicted of None means no prediction at all."""
+    pid = None
+    if predicted is not None:
+        pid = predictions.predict(f"capability:{nid}", {"success": True}, predicted)
     for k in range(n):
         g.record_outcome(nid, f"{nid}-i{k}", passed=k < passes)
-    if predicted is not None:
-        g.set_predicted_rate(nid, predicted)
+    if pid is not None:
+        g.forecast_from_ledger(nid, pid)
     return g.refresh(nid)
+
+
+def _reach(g, nid, state):
+    """Put node nid in `state` the honest way: weak and mastered only through recorded outcomes (A13)."""
+    if state in ("weak", "mastered"):
+        _node(g, nid, n=10)
+        passes, predicted = (3, 0.3) if state == "weak" else (10, 1.0)
+        return _fill(g, nid, passes=passes, n=10, predicted=predicted)
+    return _node(g, nid, state=state)
 
 
 # ---------------------------------------------------------------- acceptance 1: what a node has
@@ -62,8 +86,12 @@ def test_new_node_with_no_evidence_is_unexplored_with_zero_confidence(g):
 
 @pytest.mark.parametrize("state", FIVE_STATES)
 def test_every_listed_state_can_be_stored(g, state):
-    assert _node(g, "a", state=state).state == state
+    assert _reach(g, "a", state).state == state
     assert g.node("a").state == state
+    for early in ("mastered", "weak"):  # A13: never at creation, only through recorded outcomes
+        with pytest.raises(ValueError):
+            _node(g, "z", state=early)
+    assert [n.id for n in g.nodes()] == ["a"]
 
 
 @pytest.mark.parametrize("bad", ["", "Mastered", "done", "strong", None, 3])
@@ -332,6 +360,24 @@ def test_eighty_nine_percent_is_not_mastered_even_if_calibrated(g):
     assert _fill(g, "a", passes=89, n=100, predicted=0.89).state != "mastered"
     _node(g, "b", n=100)
     assert _fill(g, "b", passes=90, n=100, predicted=0.9).state == "mastered"
+
+
+@pytest.mark.parametrize("how", ["direct_after_outcomes", "direct_before_outcomes", "ledger_after_outcomes"])
+def test_a_forecast_that_is_not_an_older_ledger_row_is_untrusted_and_cannot_master(g, how):
+    # A14: only a CS5 ledger row, passed by id and older than the first outcome, counts toward mastered.
+    _node(g, "a", n=10)
+    if how == "direct_before_outcomes":
+        g.set_predicted_rate("a", 1.0)
+    for k in range(10):
+        g.record_outcome("a", f"a-i{k}", passed=True)
+    if how == "direct_after_outcomes":
+        g.set_predicted_rate("a", 1.0)
+    elif how == "ledger_after_outcomes":
+        pid = predictions.predict("capability:a", {"success": True}, 1.0)
+        g.forecast_from_ledger("a", pid)
+    n = g.refresh("a")
+    assert n.forecast_trusted is False
+    assert n.state != "mastered"
 
 
 def test_good_score_with_no_prediction_is_not_mastered(g):
