@@ -521,7 +521,9 @@ def test_run_python_never_asks_for_a_trusted_sandbox(monkeypatch):
 
 def test_run_python_needs_source_text_and_a_finite_timeout():
     with pytest.raises(TypeError):
-        run_python(b"print(1)", timeout_s=5)
+        run_python(["print(1)"], timeout_s=5)
+    with pytest.raises(TypeError):
+        run_python("print(1)", stdin=7, timeout_s=5)
     with pytest.raises(ValueError):
         run_python("print(1)", timeout_s=float("inf"))
 

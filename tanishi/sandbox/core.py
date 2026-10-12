@@ -297,24 +297,35 @@ PYTHON_OUTPUT_LIMIT = 64 * 1024  # bytes of each stream run_python returns
 
 @dataclass(frozen=True)
 class PythonResult:
-    """What run_python's script did; `stdout` and `stderr` hold at most PYTHON_OUTPUT_LIMIT bytes of text each."""
+    """What run_python's script did; `stdout` and `stderr` hold at most PYTHON_OUTPUT_LIMIT bytes of text each.
+    It also unpacks as `returncode, stdout`, the pair L1's harness reads (`passes.run_skill_test`)."""
 
     returncode: int
     stdout: str
     stderr: str
     timed_out: bool
 
+    def __iter__(self):
+        return iter((self.returncode, self.stdout))
 
-def run_python(script: str, *, stdin: str | bytes | None = None, timeout_s: float) -> PythonResult:
-    """Run `script` (Python source a model wrote, e.g. L1's generated skill test) as untrusted candidate code: never
-    `trusted=True`, no network, nothing of this machine readable but the interpreter. `stdin` is its standard input;
-    it is killed after `timeout_s` seconds. Raises SandboxUnavailable where no backend hides the user's other
-    processes (macOS without Docker). The script is a file in scratch, so its text is not on any command line."""
-    if not isinstance(script, str):
-        raise TypeError("script must be Python source text")
+
+def run_python(script: str | bytes, *, stdin: str | bytes | None = b"", timeout_s: float) -> PythonResult:
+    """Run `script` (Python source as text or bytes, e.g. L1's generated skill test) as untrusted candidate code:
+    never `trusted=True`, no network, nothing of this machine readable but the interpreter. `stdin` is its standard
+    input (str or bytes; None = empty); it is killed after `timeout_s` seconds (int or float). Raises
+    SandboxUnavailable where no backend hides the user's other processes (macOS without Docker). The script is a file
+    in scratch, so its text is not on any command line."""
+    if not isinstance(script, (str, bytes)):
+        raise TypeError("script must be Python source, str or bytes")
+    if stdin is not None and not isinstance(stdin, (str, bytes)):
+        raise TypeError("stdin must be str, bytes or None")
     timeout_s = _positive("timeout_s", timeout_s)
     with Sandbox(trusted=False, network=False, cpu_seconds=timeout_s, wall_seconds=timeout_s) as sb:
-        (sb.workdir / "script.py").write_text(script, encoding="utf-8")
+        path = sb.workdir / "script.py"
+        if isinstance(script, bytes):
+            path.write_bytes(script)
+        else:
+            path.write_text(script, encoding="utf-8")
         res = sb.run([sys.executable, "-I", "script.py"], input=stdin if stdin is not None else b"")
     return PythonResult(res.returncode, _clip(res.stdout), _clip(res.stderr), res.timed_out)
 
