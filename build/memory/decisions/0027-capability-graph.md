@@ -1,7 +1,7 @@
 # 0027 · The Capability Graph and nightly clustering (E3)
 
 Date: 2026-10-11. Decided by: the E3 implementer, adopting every name the exam pinned
-(`open-problems/E3-exam-assumptions.md`, A1..A14). R1 (Hypothesis Engine), AR4 and M1 read this graph.
+(`open-problems/E3-exam-assumptions.md`, A1..A16; A13 and A14 are human decisions of 2026-10-12). R1 (Hypothesis Engine), AR4 and M1 read this graph.
 
 1. **Store.** `CapabilityGraph(db_path=None)` opens the Core State db (`core_state.db.open_db`, so legacy dbs are
    refused) and creates `capability_nodes`, `capability_outcomes`, `capability_edges` with `IF NOT EXISTS`. No
@@ -15,10 +15,12 @@ Date: 2026-10-11. Decided by: the E3 implementer, adopting every name the exam p
 4. **States.** `record_outcome`, `set_predicted_rate`, `forecast_from_ledger` and `refresh` recompute in the same
    transaction. With evidence: `mastered` only when **every sealed instance has a scored outcome** (n ==
    len(instances), RT-1), observed >= 0.9 and |predicted - observed| <= 0.10 (1e-9 slack for float error); else
-   `weak`. No forecast, no mastery. With no evidence the stored state stays (`unexplored`, or `missing` /
-   `correlated` set by someone else). Evidence on a `missing` or `correlated` node replaces that state.
-   `add_node` still accepts all five states because the exam stores each one. RT-2 (only `unexplored`, `missing`,
-   `correlated` at birth) is blocked; see `open-problems/E3-repair2-conflicts.md`.
+   `weak`. No trusted forecast, no mastery (rule 9). With no evidence the stored state stays (`unexplored`, or
+   `missing` / `correlated` set by someone else). Evidence on a `missing` or `correlated` node replaces that state.
+   *Creation states (repair round 3, RT-2; human decision A13):* `add_node` accepts only `graph.START_STATES` =
+   `unexplored`, `missing`, `correlated`; `weak` and `mastered` raise ValueError and store nothing. Those two are
+   reached only by recording outcomes. The table's CHECK still allows all five states, so every state is stored
+   and read back.
 5. **Seeds.** 12 nodes cover the 29 Practice tasks once each (`graph.SEEDS`). Their instances are Practice task ids
    until AR4 provides sealed ones. **Practice tasks are not sealed**, so a seed marked `mastered` on them means
    mastered on Practice. Each task keeps its own verifier; the node's verifier is the one for its first instance.
@@ -45,9 +47,11 @@ Date: 2026-10-11. Decided by: the E3 implementer, adopting every name the exam p
    source of a prediction).** `forecast_from_ledger(node_id, prediction_id)` takes the forecast from a CS5 row
    (decision 0014) in the graph's db whose `about` is `capability:<node_id>`; the forecast is its P(success).
    It is **trusted** (`Node.forecast_trusted`) only when the row's `ts` is earlier than the node's
-   `first_outcome_at`, which the first `record_outcome` sets and nothing moves. An untrusted ledger forecast is no
-   forecast, so the node cannot be mastered. *Exam conflict:* a direct `set_predicted_rate` is never trusted, but it
-   still counts toward `mastered` because the exam's `_fill` pins that. Until the human resolves it, anything that
-   acts on mastery must require `mastered and forecast_trusted`.
+   `first_outcome_at`, which the first `record_outcome` sets and nothing moves. *Repair round 3 (human decision
+   A14):* only a trusted forecast counts toward `mastered` (`_recompute` passes `predicted_rate` only when
+   `forecast_trusted`). A direct `set_predicted_rate` is kept as a stored what-if: never trusted, never counts, and it
+   replaces any earlier ledger forecast, so it takes mastery away. `mastered` now implies `forecast_trusted`; gates
+   no longer need to check both. The nightly `explained()` reads only `weak` / `missing`, so it needs no change.
+   Consequence: a node with any outcome before its forecast can never be mastered (known-bugs).
 10. **Verifiers** must be dotted paths starting with `tanishi.` (RT-10). **`seed()`** skips a seed `requires` edge
     that would close a cycle with an existing edge and logs it; the 12 nodes always land (RT-11).

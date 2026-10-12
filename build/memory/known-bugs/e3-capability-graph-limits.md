@@ -5,9 +5,11 @@ Referenced from `tanishi/frontier/graph.py` and `clustering.py`. See decision 00
 - [ ] **Self-reported outcomes.** `record_outcome` trusts its caller, like SUB4's predictions (0021 rule 9).
       Anything can mark a node mastered by writing passes and a matching forecast. Wire it to Arena `experiments`
       rows (verifier-scored) before any promotion gate reads `mastered`.
-- [ ] **Direct forecasts still earn mastery** (RT-3, exam conflict, `open-problems/E3-repair2-conflicts.md`).
-      Only `forecast_trusted` (CS5 ledger row older than the first outcome) is honest. Once a node has an outcome,
-      no later forecast can be trusted.
+- [x] **Direct forecasts earned mastery** (RT-3). Fixed 2026-10-12 (A14): `mastered` needs `forecast_trusted`.
+- [ ] **A node scored before its forecast can never be mastered.** Trust needs the ledger row to be older than the
+      node's *first* outcome, which never moves. Re-running every instance after a new forecast does not help.
+      The looser rule ("older than the first outcome after the forecast") needs per-outcome history; the outcomes
+      table keeps only the latest result per instance.
 - [ ] **Candidates' instances are OBS1 task ids.** RT-4 gives a `missing` candidate its cluster's trace ids as
       instances. From the Arena those are Arena task ids. From the CLI (`python -m tanishi.frontier.clustering`) they
       are whatever `task_id` OBS1 recorded, and nothing scores outcomes against those ids yet. Steps with no task id
