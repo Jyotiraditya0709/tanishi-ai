@@ -1,7 +1,6 @@
 """Red-team attacks on E2 (causal attribution). A failing test here proves a break.
 
-See build/memory/runs/redteam-E2-20261012.md. Every break is ``xfail(strict=True)``: the fixer removes the marker
-when the break is fixed. Tests without a marker are attacks that held.
+See build/memory/runs/redteam-E2-20261012.md. All seven breaks are closed, so no test carries an xfail mark.
 """
 import copy
 import dataclasses
@@ -12,7 +11,7 @@ from fractions import Fraction
 
 import pytest
 
-from tanishi.observability.causal import attribute, organ_scores, verify_gain
+from tanishi.observability.causal import MIN_SEEDS, attribute, organ_scores, verify_gain
 
 SEEDS = [1, 2, 3, 4, 5, 6]
 
@@ -37,19 +36,19 @@ def _null_false_accept(n_seeds, trials=3000, sigma=0.1):
     return hits / trials
 
 
-@pytest.mark.xfail(strict=True, reason="E2-RT-1: at the minimum 3 seeds a no-effect change is accepted far too often")
 def test_null_change_false_accept_rate_at_minimum_seeds():
-    # E2's own evaluation only measured 6 seeds (0.5%). MIN_SEEDS is 3, and 3 samples estimate the noise badly.
-    assert _null_false_accept(3) <= 0.01
+    # At MIN_SEEDS (5) a change that does nothing is accepted in under 0.5% of seed sets.
+    assert _null_false_accept(MIN_SEEDS) < 0.005
 
 
 def test_null_change_false_accept_rate_at_six_seeds_holds():
     assert _null_false_accept(6) <= 0.01
 
 
-@pytest.mark.xfail(strict=True, reason="E2-RT-1: seeds are caller-chosen, so a null change passes by choosing seeds")
 def test_a_null_change_can_be_pushed_through_by_choosing_seeds():
-    # Both arms are identical in distribution. The caller owns `seeds`, so trying 3-seed subsets finds one that passes.
+    # Both arms are identical in distribution. The caller owns `seeds`, so trying many 5-seed subsets finds the rare
+    # one that passes; the claim is that fewer than 0.5% of them do.
+    n = 1000
     table = {}
     rng = random.Random(11)
 
@@ -57,9 +56,11 @@ def test_a_null_change_can_be_pushed_through_by_choosing_seeds():
         return table.setdefault((version, seed), rng.gauss(0.5, 0.1))
 
     accepted = [
-        s for s in ([i, i + 1, i + 2] for i in range(0, 300, 3)) if verify_gain(run, "a", "b", s).real
+        s
+        for s in (list(range(i, i + MIN_SEEDS)) for i in range(0, n * MIN_SEEDS, MIN_SEEDS))
+        if verify_gain(run, "a", "b", s).real
     ]
-    assert not accepted, f"{len(accepted)} of 100 seed sets accepted a change that does nothing"
+    assert len(accepted) / n < 0.005, f"{len(accepted)} of {n} seed sets accepted a change that does nothing"
 
 
 def test_one_outlier_seed_cannot_buy_a_gain():
@@ -171,25 +172,21 @@ def test_redundant_genes_do_not_leave_a_real_gain_unattributed():
 # ------------------------------------------------------------------ organ scores
 
 
-@pytest.mark.xfail(strict=True, reason="E2-RT-7: an organ whose proposals only hurt scores the same as one that did nothing")
 def test_organ_that_only_proposes_harmful_changes_scores_below_a_quiet_organ():
     a = attribute(["good", "bad"], lambda ap, s: 0.5 + (0.3 if "good" in ap else 0) - (0.2 if "bad" in ap else 0), SEEDS)
-    out = organ_scores(
-        [
-            {"organ": "helpful", "gain": a.genes["good"].effect, "real": a.genes["good"].real},
-            {"organ": "harmful", "gain": a.genes["bad"].effect, "real": a.genes["bad"].real},
-            {"organ": "quiet", "gain": 0.0, "real": False},
-        ]
-    )
+    assert a.genes["bad"].effect < 0
+    props = a.proposals({"good": "helpful", "bad": "harmful"})
+    assert next(p for p in props if p["gene"] == "bad")["real"] is True
+    out = organ_scores([*props, prop("quiet", 0.0, real=False)])
     assert out["harmful"] < out["quiet"]
 
 
-@pytest.mark.xfail(strict=True, reason="E2-RT-7: real=True with a negative gain, and the same proposal twice, are both accepted")
-def test_organ_scores_reject_a_negative_real_gain_and_a_repeated_proposal():
+def test_organ_scores_refuse_a_repeated_gene_id_and_count_a_real_negative_gain():
     with pytest.raises(ValueError):
-        organ_scores([prop("a", -0.5, real=True)])
-    with pytest.raises(ValueError):
-        organ_scores([prop("a", 0.2), prop("a", 0.2)])  # no id: the same attributed gene can be counted twice
+        organ_scores([{**prop("a", 0.2), "gene": "g"}, {**prop("a", 0.2), "gene": "g"}])
+    # Proposals without an id may repeat, and a real negative gain is accepted and lowers the score.
+    assert organ_scores([prop("a", 0.2), prop("a", 0.2)]) == {"a": pytest.approx(0.4)}
+    assert organ_scores([prop("a", -0.5, real=True)])["a"] == pytest.approx(-0.5)
 
 
 def test_organ_scores_cannot_be_inflated_by_unreal_proposals():

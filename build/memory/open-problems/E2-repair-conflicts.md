@@ -1,5 +1,10 @@
 # E2 repair round (2026-10-12): where the card and the tests conflict
 
+**All four entries below are RESOLVED BY THE HUMAN (2026-10-12).** The red-team tests were revised to follow the
+decisions (1: both RT-1 proofs use `causal.MIN_SEEDS`; 2: repeated gene id refused, id-less repeats and real
+negative gains accepted; 3: proofs build proposals with `Attribution.proposals`; 4: a true +0.01 is not real at any
+level) and pass with no code change.
+
 Rule for this round: the test wins. Four red-team tests in `tests/observability/test_redteam_e2.py` keep their
 `xfail(strict=True)` mark because no code can satisfy both them and the card (or the exam). One card sentence was read
 against its literal wording to keep the exam passing. Nothing in any test was changed.
