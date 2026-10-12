@@ -39,6 +39,7 @@ ACTOR = "compiler.passes"
 EMIT_EVENT = "compiler_emit"
 PASS_FAILED_EVENT = "compiler_pass_failed"
 REFUSED_EVENT = "compiler_refused"
+UNSANDBOXED_EVENT = "skill_test_unsandboxed"  # a template skill test ran without SB1 (decision 0026, seam round)
 TASK_PREFIX = "task:"  # only a task-level prediction is scored with the task's verdict; tool calls are the registry's
 SKILL_TIMEOUT_S = 20.0
 SIGNATURE_CHARS = 120  # how much of a failing output a belief or skill candidate keeps
@@ -386,7 +387,7 @@ def _pass4_check(exp: Experience, item: Item) -> tuple[bool, str]:
     p = item.get("payload")
     if not isinstance(p, dict):
         return False, "payload must be a dict"
-    return run_skill_test(p.get("code"), p.get("test"))
+    return run_skill_test(p.get("code"), p.get("test"), from_template=True)
 
 
 # ---------------------------------------------------------------- the skill-test harness
@@ -500,9 +501,14 @@ def _sandbox() -> Callable[..., tuple[int, str]] | None:
     return run
 
 
-def run_skill_test(code: Any, test: Any, timeout_s: float = SKILL_TIMEOUT_S) -> tuple[bool, str]:
+def run_skill_test(code: Any, test: Any, timeout_s: float = SKILL_TIMEOUT_S, *,
+                   from_template: bool = False) -> tuple[bool, str]:
     """Run a candidate's test against its code, in SB1's sandbox when it is present, else in a clean, isolated
     interpreter (`python -I`, temp cwd and HOME, no inherited environment).
+
+    If the sandbox raises SandboxUnavailable (macOS without Docker), only code the compiler wrote from its own
+    template (`from_template=True`, pass 4's check) falls back to the isolated interpreter, with a logged
+    `skill_test_unsandboxed` event; anything else is refused (human decision, decision 0026).
 
     The harness owns discovery: only the `test_*` functions defined at the top level of the test source run, and a
     test that rebinds a name the code defines is refused. True only when every one of them returned and the child
@@ -525,7 +531,7 @@ def run_skill_test(code: Any, test: Any, timeout_s: float = SKILL_TIMEOUT_S) -> 
     nonce = os.urandom(16).hex()
     request = json.dumps({"code": code, "test": test, "tests": names, "nonce": nonce})
     try:
-        returncode, stdout = _run_driver(request, timeout_s)
+        returncode, stdout = _run_driver(request, timeout_s, from_template)
     except (subprocess.TimeoutExpired, TimeoutError):
         return False, "test timed out"
     except Exception as e:  # noqa: BLE001 - a sandbox that fails is a refusal, never a pass
@@ -537,10 +543,19 @@ def run_skill_test(code: Any, test: Any, timeout_s: float = SKILL_TIMEOUT_S) -> 
     return True, f"{len(names)} test(s) passed"
 
 
-def _run_driver(request: str, timeout_s: float) -> tuple[int, str]:
+def _run_driver(request: str, timeout_s: float, from_template: bool = False) -> tuple[int, str]:
     sandboxed = _sandbox()
-    if sandboxed is not None:
+    if sandboxed is None:
+        return _run_isolated(_DRIVER, request, timeout_s)
+    try:
         return sandboxed(_DRIVER, stdin=request, timeout_s=timeout_s)
+    except Exception as e:
+        unavailable = getattr(importlib.import_module("tanishi.sandbox"), "SandboxUnavailable", ())
+        if not from_template or not isinstance(e, unavailable):
+            raise
+        reason = str(e)[:SIGNATURE_CHARS] or type(e).__name__
+    logger.warning("sandbox unavailable; template skill test runs unsandboxed: %s", reason)
+    _log(UNSANDBOXED_EVENT, {"reason": reason})
     return _run_isolated(_DRIVER, request, timeout_s)
 
 
