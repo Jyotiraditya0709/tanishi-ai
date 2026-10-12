@@ -34,7 +34,6 @@ def test_mastered_needs_every_sealed_instance_scored(g):
 
 # RT-2 (medium) mastery with no evidence ----------------------------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason="RT-2: add_node accepts state='mastered' with no outcome behind it")
 def test_a_node_cannot_be_created_mastered_without_evidence(g):
     with pytest.raises(ValueError):
         g.add_node("x.skill", task_family="f", verifier=VERIFIER, instances=["i0"], state="mastered")
@@ -42,7 +41,6 @@ def test_a_node_cannot_be_created_mastered_without_evidence(g):
 
 # RT-3 (medium) forecast written after the outcomes -----------------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason="RT-3: a forecast set after the evidence is not a forecast, yet it calibrates")
 def test_a_forecast_made_after_the_outcomes_does_not_earn_mastery(g):
     g.add_node("x.skill", task_family="f", verifier=VERIFIER, instances=[f"i{k}" for k in range(10)])
     for k in range(10):

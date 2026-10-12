@@ -11,8 +11,9 @@ capability requires another, fails together with it, or composes into it.
     g.node("code.fix_bug").state                # mastered | weak | missing | correlated | unexplored
 
 Mastered: every sealed instance scored, at least 90% of them passed, and her predicted rate within 10 points of the
-real one (decision 0027). A forecast is trusted only when it is a CS5 ledger row written before the node's first
-outcome (`Node.forecast_trusted`); `set_predicted_rate` still counts because the exam pins it (E3-repair2-conflicts).
+real one (decision 0027). Only a trusted forecast counts: a CS5 ledger row, given by id, written before the node's
+first outcome (`Node.forecast_trusted`, A14). A node is born `unexplored`, `missing` or `correlated`; it becomes `weak`
+or `mastered` only through recorded outcomes (A13).
 """
 from __future__ import annotations
 
@@ -31,6 +32,7 @@ from tanishi.core_state.db import open_db, resolve_path
 
 logger = logging.getLogger(__name__)
 STATES = ("mastered", "weak", "missing", "correlated", "unexplored")
+START_STATES = ("unexplored", "missing", "correlated")  # weak and mastered need evidence (A13)
 EDGE_KINDS = ("requires", "fails_together", "composes_into")
 
 MASTERY_RATE = 0.9  # observed pass rate on sealed instances
@@ -266,10 +268,11 @@ class CapabilityGraph:
                  state: str = "unexplored") -> Node:
         """Add a capability. Refuses a duplicate id. Does not import the verifier.
 
-        Every state is accepted because the exam stores all five (RT-2 is open, see E3-repair2-conflicts); only
-        `unexplored`, `missing` and `correlated` are honest starting states.
+        `state` is one of START_STATES; `weak` and `mastered` raise ValueError, since only outcomes earn them (A13).
         """
         values = (_name(id, "node id"), _family(task_family), _verifier(verifier), _instances(instances), _state(state))
+        if state not in START_STATES:
+            raise ValueError(f"a new node's state must be one of {START_STATES}; {state!r} is earned by outcomes")
         with self._tx() as conn:
             if not self._insert(conn, *values):
                 raise ValueError(f"node {id!r} already exists")
@@ -342,7 +345,7 @@ class CapabilityGraph:
             return self._recompute(conn, node_id)
 
     def set_predicted_rate(self, node_id: str, p: float) -> Node:
-        """A forecast given directly. Never `forecast_trusted`; it still earns mastery because the exam pins that."""
+        """A what-if forecast given directly. Stored, never `forecast_trusted`, so it never earns mastery (A14)."""
         p = _unit(p, "predicted rate")
         with self._tx() as conn:
             self._get(conn, node_id)
@@ -388,8 +391,8 @@ class CapabilityGraph:
         n = self._get(conn, node_id)
         if n.evidence == 0:  # no evidence: keep the stored state (unexplored, or missing/correlated set by others)
             return n
-        # A ledger forecast written after the first outcome is no forecast. A direct one counts (exam; RT-3 conflict).
-        predicted = n.predicted_rate if n.forecast_id is None or n.forecast_trusted else None
+        # Only a ledger row older than the first outcome is a forecast (A14); anything else counts as none.
+        predicted = n.predicted_rate if n.forecast_trusted else None
         state = state_for(n.observed_rate, predicted, n.evidence, total=len(n.instances))
         _, passes = self._tally(conn, node_id, n.instances)
         conn.execute(

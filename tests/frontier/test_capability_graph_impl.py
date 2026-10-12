@@ -113,6 +113,15 @@ def test_re_running_outcomes_does_not_make_a_late_forecast_early(ledger):
     assert _all_pass(gg).state == "weak"  # i0 is re-run after the forecast; the first outcome still came first
 
 
+def test_a_direct_what_if_forecast_over_a_mastered_node_takes_mastery_away(ledger):
+    gg, predictions = ledger
+    gg.forecast_from_ledger("x.skill", predictions.predict("capability:x.skill", {"success": True}, 1.0))
+    assert _all_pass(gg).state == "mastered"
+    n = gg.set_predicted_rate("x.skill", 1.0)  # A14: only the ledger row counted; the what-if replaces it
+    assert (n.forecast_trusted, n.state) == (False, "weak")
+    assert gg.refresh("x.skill").state == "weak"
+
+
 def test_a_direct_forecast_replaces_a_ledger_one_and_is_never_trusted(ledger):
     gg, predictions = ledger
     gg.forecast_from_ledger("x.skill", predictions.predict("capability:x.skill", {"success": True}, 0.9))

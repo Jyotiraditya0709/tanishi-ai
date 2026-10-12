@@ -71,8 +71,9 @@ def test_nightly_on_the_corpus_proposes_one_candidate_per_unexplained_mode(tmp_p
     # A12: a weak node explains the tool_use modes, whose failed tasks are all its own instances.
     steps, truth = _corpus(1)
     g = graph.CapabilityGraph(tmp_path / "g.db")
-    g.add_node("tools", task_family="tool_use", verifier=graph.NO_VERIFIER, state="weak",
-               instances=sorted(tid for tid, m in truth.items() if MODES[m][0] == "tool_use"))
+    own = sorted(tid for tid, m in truth.items() if MODES[m][0] == "tool_use")
+    g.add_node("tools", task_family="tool_use", verifier=graph.NO_VERIFIER, instances=own)
+    assert g.record_outcome("tools", own[0], passed=False).state == "weak"  # A13: weak is earned by an outcome
     new = clustering.nightly(g, steps)
     assert sorted(n.task_family for n in new) == ["coding", "coding", "reasoning", "reasoning"]
     assert clustering.nightly(g, steps) == []
