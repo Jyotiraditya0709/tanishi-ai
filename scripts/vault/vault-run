@@ -1,0 +1,23 @@
+#!/bin/sh
+# The only door into the Sealed Vault (AR4). Installed root-owned at /usr/local/libexec/tanishi-vault/vault-run and
+# reached through one sudo rule, so it runs as tanishi-vault. sudo has already dropped the caller's environment; this
+# sets the vault's own, so nothing the caller sets can widen what the vault does.
+set -eu
+case "${1:-}" in
+  evaluate|manifest|status|verify) ;;
+  *) echo '{"error": "unknown command"}'; exit 2 ;;
+esac
+VHOME=/Users/tanishi-vault
+export HOME="$VHOME" TANISHI_SEALED_HOME="$VHOME" TANISHI_SEALED_SHARED=/Users/Shared/tanishi-vault
+export TANISHI_SEALED_DAILY_READS=6 PATH=/usr/bin:/bin:/usr/sbin:/sbin LANG=en_US.UTF-8
+unset TANISHI_SEALED_EXECUTOR_PREFIXES TANISHI_SEALED_CHECKS TANISHI_SEALED_PASSTHROUGH
+# Model keys the executor may need live in the vault's own 0600 file, as NAME=value lines plus
+# TANISHI_SEALED_PASSTHROUGH=NAME1,NAME2 naming which of them an attempt may see.
+if [ -f "$VHOME/keys.env" ]; then
+  set -a
+  . "$VHOME/keys.env"
+  set +a
+fi
+unset TANISHI_SEALED_EXECUTOR_PREFIXES TANISHI_SEALED_CHECKS
+cd "$VHOME"
+exec "$VHOME/runtime/venv/bin/python" -I -m tanishi.arena.sealed "$@"
